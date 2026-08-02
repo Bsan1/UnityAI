@@ -45,6 +45,8 @@ A dependency is safely auto-fixable only when it is simple and approved, such as
 
 Do not introduce a dependency graph unless a later demonstrated need requires it.
 
+**M1 implementation note:** Because real feasibility does not exist yet, recheck records the request and returns the task to `ANALYZING` without fabricating a result. M4 will connect that state to current-repository inspection.
+
 ## D-009: QA is layered, comprehensive, and evidence-based
 
 **Decision:** Future QA levels are QA0 static, QA1 Unity/project structure, QA2 Play Mode interaction, and QA3 player-like gameplay validation. A QA session attempts every check that can reasonably continue after a failure and batches all discovered failures.
@@ -53,7 +55,7 @@ Acceptance criteria should use evidence such as compiler and Unity console outpu
 
 ## D-010: Git is a safety boundary
 
-**Decision:** Future Git behavior includes repository-state detection, base commit recording, task branches and/or worktrees, checkpoints, diffs, rollback, and final commits. Only one writing agent may own a writable worktree at a time; read-only reviewers may operate independently. M0 does not automate Git.
+**Decision:** Future Git behavior includes repository-state detection, base commit recording, task branches and/or worktrees, checkpoints, diffs, rollback, and final commits. Only one writing agent may own a writable worktree at a time; read-only reviewers may operate independently. M1 does not automate Git.
 
 ## D-011: Provider-neutral system
 

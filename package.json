@@ -9,8 +9,9 @@
   ],
   "scripts": {
     "build": "npm run build --workspace @unityai/shared && npm run build --workspace @unityai/core && npm run build --workspace @unityai/server && npm run build --workspace @unityai/web",
-    "typecheck": "npm run typecheck --workspace @unityai/shared && npm run typecheck --workspace @unityai/core && npm run typecheck --workspace @unityai/server && npm run typecheck --workspace @unityai/web",
-    "dev:server": "npm run dev --workspace @unityai/server",
+    "typecheck": "npm run typecheck --workspace @unityai/shared && npm run typecheck --workspace @unityai/core && npm run typecheck --workspace @unityai/server && npm run typecheck --workspace @unityai/web && tsc --noEmit -p tsconfig.tests.json",
+    "test": "npm run build --workspace @unityai/core && tsx --test packages/core/test/*.test.ts apps/server/test/*.test.ts",
+    "dev:server": "npm run build --workspace @unityai/core && npm run dev --workspace @unityai/server",
     "dev:web": "npm run dev --workspace @unityai/web"
   },
   "engines": {
@@ -18,6 +19,8 @@
     "npm": ">=10.0.0"
   },
   "devDependencies": {
+    "@types/node": "^24.3.0",
+    "tsx": "^4.20.5",
     "typescript": "^5.9.2"
   }
 }

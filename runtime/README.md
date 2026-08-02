@@ -1,3 +1,5 @@
 # Runtime data
 
-This directory is reserved for local mutable JSON state created by later milestones. Its generated contents are ignored by Git. M0 does not persist application state.
+M1 stores local task state under `tasks/TASK-0001/task.json`. Generated contents remain ignored by Git. Each task file is the source of truth and includes its lightweight event history.
+
+Set `UNITYAI_RUNTIME_PATH` to redirect runtime data, including for isolated development and test sessions.

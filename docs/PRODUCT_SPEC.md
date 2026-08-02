@@ -51,6 +51,6 @@ When feasibility blocks a task, the eventual user actions are:
 - **QA2:** runtime interaction testing in Unity Play Mode.
 - **QA3:** player-like validation of the requested gameplay behavior.
 
-## Current M0 scope
+## Current M1 scope
 
-M0 establishes only the repository, documentation, workspace, health endpoint, and connectivity page. No orchestration workflow described above exists yet. See [ROADMAP.md](ROADMAP.md) for staged delivery.
+M1 establishes the task entity, explicit state transitions, Task Contract and feasibility-result storage schemas, task history, JSON persistence, and a local task API. Supplied development data can exercise the state machine, but no AI analysis, implementation, Git task environment, Unity connection, or QA execution exists yet. See [ROADMAP.md](ROADMAP.md) for staged delivery.

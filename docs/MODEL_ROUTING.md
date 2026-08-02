@@ -25,4 +25,4 @@ When Cross Review is `ON`, the initial intended reviewer is Claude Sonnet throug
 
 These values will eventually live in configuration loaded by the orchestrator. They must not be copied into agent prompts or spread across application conditionals. Model availability changes are handled by manually revising routing configuration, not by changing agent identity or escalating during a task.
 
-M0 records this decision but does not implement model loading, providers, agents, or routing.
+The repository records this decision, but M1 does not implement model loading, providers, agents, or routing.

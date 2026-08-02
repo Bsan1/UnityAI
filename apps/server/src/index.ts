@@ -1,50 +1,40 @@
-import { createServer } from "node:http";
+import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
 import { applicationInfo } from "@unityai/core";
-import type { HealthResponse } from "@unityai/shared";
+
+import { createUnityAiServer } from "./app.js";
+import { loadTaskSettings } from "./config.js";
+import { TaskService } from "./taskService.js";
+import { TaskStore } from "./taskStore.js";
 
 const host = "127.0.0.1";
 const defaultPort = 3000;
+const workspaceRoot = fileURLToPath(new URL("../../..", import.meta.url));
 
 const resolvePort = (value: string | undefined): number => {
   if (value === undefined) {
     return defaultPort;
   }
-
   if (!/^\d+$/.test(value)) {
     throw new Error("UNITYAI_PORT must be an integer between 1 and 65535.");
   }
-
   const port = Number(value);
   if (!Number.isSafeInteger(port) || port < 1 || port > 65_535) {
     throw new Error("UNITYAI_PORT must be an integer between 1 and 65535.");
   }
-
   return port;
 };
 
-const healthResponse: HealthResponse = {
-  status: "ok",
-  app: applicationInfo.name,
-  version: applicationInfo.version,
-  milestone: applicationInfo.milestone,
-};
-
-const server = createServer((request, response) => {
-  const requestUrl = new URL(request.url ?? "/", `http://${host}`);
-
-  response.setHeader("Content-Type", "application/json; charset=utf-8");
-  response.setHeader("Cache-Control", "no-store");
-
-  if (request.method === "GET" && requestUrl.pathname === "/health") {
-    response.writeHead(200);
-    response.end(JSON.stringify(healthResponse));
-    return;
-  }
-
-  response.writeHead(404);
-  response.end(JSON.stringify({ error: "Not found" }));
-});
+const runtimeRoot =
+  process.env.UNITYAI_RUNTIME_PATH ?? join(workspaceRoot, "runtime");
+const configPath =
+  process.env.UNITYAI_CONFIG_PATH ?? join(workspaceRoot, "config", "defaults.json");
+const settings = await loadTaskSettings(configPath);
+const store = new TaskStore(runtimeRoot);
+await store.initialize();
+const service = new TaskService(store, settings);
+const server = createUnityAiServer(service);
 const port = resolvePort(process.env.UNITYAI_PORT);
 
 server.listen(port, host, () => {

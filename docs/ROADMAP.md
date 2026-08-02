@@ -1,8 +1,8 @@
 # Roadmap
 
-The current milestone is **M0 - Foundation**. Milestones describe bounded increments; completing one does not authorize implementation of the next.
+**M1 - Core Task and State Pipeline is complete. M2 - Git Safety Layer is next.** Milestones describe bounded increments; completing one does not authorize implementation of the next.
 
-## M0 - Foundation (current)
+## M0 - Foundation (completed)
 
 **Goal:** Establish a clean, project-independent TypeScript application foundation and record fixed product decisions.
 
@@ -12,17 +12,17 @@ The current milestone is **M0 - Foundation**. Milestones describe bounded increm
 
 **Completion criteria:** Dependencies install; all workspaces type-check and build; the server returns a successful `/health` response; the web production build succeeds; documentation reflects fixed decisions; changes are captured in one local commit when safe.
 
-## M1 - Core Task and State Pipeline
+## M1 - Core Task and State Pipeline (completed)
 
 **Goal:** Represent tasks and their local lifecycle with simple JSON-backed state.
 
-**Major deliverables:** Task identifiers and records; lifecycle states and legal transitions; task strength and binary option values; JSON persistence with safe reads/writes; focused domain and persistence tests.
+**Major deliverables:** Task identifiers and records; lifecycle states and legal transitions; task strength and binary option values; pause/resume, blocked-task actions, cancellation, feasibility-result and Task Contract schemas; approval gating; event history; JSON persistence with safe writes and boundary validation; minimal HTTP API; focused domain and persistence tests.
 
-**Explicit non-goals:** Git mutations, AI calls, feasibility analysis, Task Contracts, Unity access, full UI, and QA execution.
+**Explicit non-goals:** Git mutations, AI calls, real interpretation or feasibility analysis, AI-generated Task Contracts, implementation execution, Unity access, full UI, and QA execution.
 
-**Completion criteria:** Tasks can be created, loaded, updated through valid transitions, paused, and cancelled; invalid transitions are rejected; restart persistence is tested.
+**Completion criteria:** Tasks can be created, loaded, updated through valid transitions, paused, resumed, rechecked, and cancelled; prerequisite drafts remain editable and inactive; contract approval gates implementation readiness; invalid transitions and persisted data are rejected; restart persistence and ID continuation are tested.
 
-## M2 - Git Safety Layer
+## M2 - Git Safety Layer (next)
 
 **Goal:** Add a safe native-Git boundary for external target repositories.
 

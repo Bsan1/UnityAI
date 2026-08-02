@@ -1,23 +1,34 @@
 # Architecture
 
-## Current M0 state
+## Current M1 state
 
-M0 is a small npm workspace with four independently named workspaces:
+M1 remains a small npm workspace with four independently named workspaces:
 
 ```text
 apps/web       React + Vite connectivity page
-apps/server    Local Node.js HTTP server with GET /health
-packages/core  Application identity and core product metadata
+apps/server    Local Node.js HTTP server, JSON task store, and task API
+packages/core  Task domain, state transitions, actions, and schema validation
 packages/shared Shared HTTP contract types
 ```
 
-The browser calls `/health`. During development, Vite proxies that request to the local server. The server uses Node's built-in HTTP module; no backend framework or database is present. `config/` documents the future home of replaceable configuration. `runtime/` reserves a Git-ignored location for future local mutable state.
+The browser still provides only the M0 connectivity page. During development, Vite proxies `/health` to the local server. The server uses Node's built-in HTTP module and exposes direct task commands. No backend framework or database is present.
 
-This current structure deliberately contains no AI, Git, Unity, task execution, state pipeline, or QA implementation.
+`packages/core` owns the `Task` entity, a small fixed state set, legal transition rules, pause/resume and blocked-task actions, feasibility and Task Contract schemas, approval gating, and runtime validation. The task JSON is the source of truth; its event history is only an audit aid, not event sourcing.
+
+`apps/server` owns a concrete local `TaskStore` and `TaskService`. The store scans persisted IDs at startup, validates every task, and performs same-directory temporary-file/rename writes. Data uses this layout:
+
+```text
+runtime/tasks/TASK-0001/task.json
+runtime/tasks/TASK-0002/task.json
+```
+
+`config/defaults.json` contains the two boolean defaults copied into new tasks. M1's supplied feasibility and contract endpoints are development mechanisms only. They do not claim that an agent ran. Recheck moves an eligible task to `ANALYZING`, clears its stale current analysis result, and records the request for M4.
+
+This current structure deliberately contains no AI/provider execution, Git task automation, Unity connection, implementation execution, QA, automatic fix execution, or production task UI.
 
 ## Planned architecture
 
-The following boundaries guide later milestones but are not implemented in M0.
+The following boundaries guide later milestones. Only the M1 portions described above are implemented.
 
 ### Local application boundary
 
@@ -33,7 +44,7 @@ The server will coordinate application use cases, persistence, process execution
 
 ### Core domain
 
-Core types and rules will describe tasks, lifecycle state, Task Contracts, feasibility results, approval, QA results, and configuration-independent agent roles. Domain code must not import a concrete AI provider, Unity bridge, web framework, or Git process implementation.
+Core types and rules now describe tasks, lifecycle state, Task Contracts, feasibility results, and approval. Later milestones may add QA results and configuration-independent agent roles when required. Domain code does not import a concrete AI provider, Unity bridge, web framework, filesystem, or Git implementation.
 
 ### Agent and model boundary
 
@@ -45,7 +56,7 @@ Filesystem and native Git CLI adapters will inspect and safely modify the select
 
 ### Persistence and configuration
 
-Initial persistence will use plain JSON files under a local runtime-data location. Model routing and other replaceable settings belong in configuration rather than repeated conditionals. A database is not planned until demonstrated need justifies one.
+Task persistence now uses plain JSON files under a local runtime-data location. Model routing and other replaceable settings belong in configuration rather than repeated conditionals. A database is not planned until demonstrated need justifies one.
 
 ## Dependency direction
 
