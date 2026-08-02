@@ -8,10 +8,10 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build --workspace @unityai/core && npm run build --workspace @unityai/shared && npm run build --workspace @unityai/server && npm run build --workspace @unityai/web",
-    "typecheck": "npm run typecheck --workspace @unityai/core && npm run typecheck --workspace @unityai/shared && npm run typecheck --workspace @unityai/server && npm run typecheck --workspace @unityai/web && tsc --noEmit -p tsconfig.tests.json",
-    "test": "npm run build --workspace @unityai/core && tsx --test packages/core/test/*.test.ts apps/server/test/*.test.ts apps/web/test/*.test.tsx",
-    "dev:server": "npm run build --workspace @unityai/core && npm run dev --workspace @unityai/server",
+    "build": "npm run build --workspace @unityai/core && npm run build --workspace @unityai/unity && npm run build --workspace @unityai/shared && npm run build --workspace @unityai/server && npm run build --workspace @unityai/unity-mcp && npm run build --workspace @unityai/web",
+    "typecheck": "npm run typecheck --workspace @unityai/core && npm run typecheck --workspace @unityai/unity && npm run typecheck --workspace @unityai/shared && npm run typecheck --workspace @unityai/server && npm run typecheck --workspace @unityai/unity-mcp && npm run typecheck --workspace @unityai/web && tsc --noEmit -p tsconfig.tests.json",
+    "test": "npm run build --workspace @unityai/core && npm run build --workspace @unityai/unity && npm run build --workspace @unityai/unity-mcp && tsx --test packages/core/test/*.test.ts packages/unity/test/*.test.ts apps/server/test/*.test.ts apps/unity-mcp/test/*.test.ts apps/web/test/*.test.tsx",
+    "dev:server": "npm run build --workspace @unityai/core && npm run build --workspace @unityai/unity && npm run build --workspace @unityai/shared && npm run dev --workspace @unityai/server",
     "dev:web": "npm run dev --workspace @unityai/web"
   },
   "engines": {

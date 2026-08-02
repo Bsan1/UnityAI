@@ -6,6 +6,8 @@ import type {
   Task,
   TaskDetailsResponse,
   TaskProgress,
+  UnityProjectInspectionResponse,
+  UnityTaskStatusResponse,
 } from "@unityai/shared";
 
 export class ApiError extends Error {
@@ -51,9 +53,15 @@ export const api = {
   health: () => request<HealthResponse>("/health"),
   listProjects: async () =>
     (await request<{ projects: readonly ProjectRecord[] }>("/projects")).projects,
-  createProject: async (input: { displayName: string; path: string }) =>
+  createProject: async (input: {
+    displayName: string;
+    path: string;
+    unityEditorPath?: string;
+  }) =>
     (await request<{ project: ProjectRecord }>("/projects", json("POST", input))).project,
   deleteProject: (id: string) => request(`/projects/${id}`, json("DELETE")),
+  inspectUnityProject: (id: string) =>
+    request<UnityProjectInspectionResponse>(`/projects/${id}/unity`),
   getSettings: async () =>
     (await request<{ settings: GlobalSettings }>("/settings")).settings,
   updateSettings: async (input: Partial<GlobalSettings>) =>
@@ -80,6 +88,18 @@ export const api = {
   cancel: (id: string) => request(`/tasks/${id}/cancel`, json("POST", {})),
   startImplementation: (id: string) =>
     request(`/tasks/${id}/start-implementation`, json("POST")),
+  getTaskUnity: (id: string) =>
+    request<UnityTaskStatusResponse>(`/tasks/${id}/unity`),
+  prepareTaskUnity: (id: string) =>
+    request(`/tasks/${id}/unity`, json("POST")),
+  startUnityEditor: (id: string) =>
+    request<UnityTaskStatusResponse>(`/tasks/${id}/unity/editor/start`, json("POST")),
+  stopUnityEditor: (id: string) =>
+    request<UnityTaskStatusResponse>(`/tasks/${id}/unity/editor/stop`, json("POST")),
+  waitForUnityIdle: (id: string) =>
+    request(`/tasks/${id}/unity/editor/wait-idle`, json("POST", {})),
+  removeUnityBridge: (id: string) =>
+    request<UnityTaskStatusResponse>(`/tasks/${id}/unity/bridge/remove`, json("POST")),
   prerequisiteDraft: async (id: string) =>
     (await request<{ prerequisiteDraft: Task }>(
       `/tasks/${id}/prerequisite-draft`,
@@ -106,6 +126,18 @@ export const userMessageForError = (error: unknown): string => {
   }
   if (error.code === "TASK_IMPLEMENTATION_IN_PROGRESS") {
     return "Implementation is already running for this task.";
+  }
+  if (error.code === "NOT_A_UNITY_PROJECT") {
+    return "The selected Git project does not have the required Unity project structure (Assets, Packages, ProjectSettings, and ProjectVersion.txt).";
+  }
+  if (error.code === "UNITY_EDITOR_NOT_FOUND") {
+    return `The matching Unity Editor is not installed or configured. ${error.message}`;
+  }
+  if (error.code === "UNITY_BRIDGE_CONFLICT") {
+    return "The managed worktree already contains a bridge package UnityAI does not own. It was not overwritten or removed.";
+  }
+  if (error.code === "EDITOR_NOT_OWNED") {
+    return "UnityAI did not launch this Editor in the current server session, so it will not terminate it.";
   }
   return error.message;
 };

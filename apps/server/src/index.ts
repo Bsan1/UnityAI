@@ -18,6 +18,8 @@ import { SettingsStore } from "./settingsStore.js";
 import { TaskService } from "./taskService.js";
 import { TaskStore } from "./taskStore.js";
 import { WorkflowService } from "./workflowService.js";
+import { UnityEnvironmentService } from "./unityEnvironmentService.js";
+import { UnityEnvironmentStore } from "./unityEnvironmentStore.js";
 
 const host = "127.0.0.1";
 const defaultPort = 3000;
@@ -91,6 +93,21 @@ const implementationOrchestrator = new ImplementationOrchestrator(
   orchestrationArtifacts,
 );
 await implementationOrchestrator.recoverInterruptedRuns();
+const unityEnvironmentStore = new UnityEnvironmentStore(runtimeRoot);
+await unityEnvironmentStore.initialize();
+const unityEnvironmentService = new UnityEnvironmentService({
+  tasks: service,
+  git: gitService,
+  projects: projectRegistry,
+  store: unityEnvironmentStore,
+  runtimeRoot,
+  bridgeSourcePackagePath: join(
+    workspaceRoot,
+    "unity",
+    "Packages",
+    "com.unityai.editor-bridge",
+  ),
+});
 const workflowService = new WorkflowService({
   tasks: service,
   projects: projectRegistry,
@@ -110,6 +127,7 @@ const server = createUnityAiServer(
     settings: settingsStore,
     workflow: workflowService,
     orchestrator: implementationOrchestrator,
+    unity: unityEnvironmentService,
   },
 );
 const port = resolvePort(process.env.UNITYAI_PORT);

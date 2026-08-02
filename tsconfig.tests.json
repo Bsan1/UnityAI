@@ -8,7 +8,10 @@
   },
   "include": [
     "packages/core/test/**/*.ts",
+    "packages/unity/test/**/*.ts",
     "apps/server/test/**/*.ts",
-    "apps/web/test/**/*.tsx"
+    "apps/unity-mcp/test/**/*.ts",
+    "apps/web/test/**/*.tsx",
+    "scripts/**/*.ts"
   ]
 }

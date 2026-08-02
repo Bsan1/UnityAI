@@ -8,6 +8,15 @@ import type {
   TaskExecutionFailure,
   TaskSettings,
 } from "@unityai/core";
+import type {
+  UnityEditorStatus,
+  UnityProjectMetadata,
+} from "@unityai/unity";
+
+export type {
+  UnityEditorStatus,
+  UnityProjectMetadata,
+} from "@unityai/unity";
 
 export type {
   AcceptanceCriterion,
@@ -40,9 +49,60 @@ export interface ProjectRecord {
   readonly id: string;
   readonly displayName: string;
   readonly path: string;
+  readonly unityEditorPath?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly lastUsedAt?: string;
+}
+
+export interface UnityProjectInspectionResponse {
+  readonly projectId: string;
+  readonly metadata: UnityProjectMetadata;
+  readonly editor:
+    | {
+        readonly found: true;
+        readonly requestedVersion: string;
+        readonly executablePath: string;
+        readonly resolutionMethod: string;
+      }
+    | {
+        readonly found: false;
+        readonly requestedVersion: string;
+        readonly error: { readonly code: string; readonly message: string };
+      };
+}
+
+export interface UnityTaskEnvironmentView {
+  readonly schemaVersion: 1;
+  readonly taskId: string;
+  readonly projectWorktreePath: string;
+  readonly unityVersion: string;
+  readonly editorExecutablePath: string;
+  readonly editorResolutionMethod: string;
+  readonly bridge: {
+    readonly installed: boolean;
+    readonly packagePath?: string;
+    readonly packageVersion?: string;
+    readonly sourceFingerprint?: string;
+    readonly installedAt?: string;
+    readonly removedAt?: string;
+  };
+  readonly editorLaunch?: {
+    readonly processId: number;
+    readonly launchId: string;
+    readonly launchedAt: string;
+  };
+  readonly createdAt: string;
+  readonly updatedAt: string;
+}
+
+export interface UnityTaskStatusResponse {
+  readonly environment?: UnityTaskEnvironmentView;
+  readonly bridge: "NOT_INSTALLED" | "INSTALLED" | "CONNECTED" | "STALE";
+  readonly editor: "STOPPED" | "RUNNING" | "DISCONNECTED";
+  readonly ownedEditor: boolean;
+  readonly editorStatus?: UnityEditorStatus;
+  readonly diagnostic?: { readonly code: string; readonly message: string };
 }
 
 export type ProgressStepStatus =

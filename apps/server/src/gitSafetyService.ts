@@ -34,6 +34,14 @@ const pathsEqual = (left: string, right: string): boolean =>
 const uniqueSorted = (values: readonly string[]): readonly string[] =>
   [...new Set(values)].sort((left, right) => left.localeCompare(right));
 
+const unityBridgeToolingPath = "Packages/com.unityai.editor-bridge";
+const productStagingPathspecs = [
+  ".",
+  `:(exclude)${unityBridgeToolingPath}`,
+  `:(exclude)${unityBridgeToolingPath}/**`,
+  `:(exclude)${unityBridgeToolingPath}.meta`,
+] as const;
+
 const readObject = (value: unknown, name: string): JsonRecord => {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new ServerError("VALIDATION_ERROR", `${name} must be an object.`, 400);
@@ -286,7 +294,8 @@ export class GitSafetyService {
       );
     }
 
-    await this.runner.runChecked(["add", "--all"], { cwd });
+    await this.unstageUnityBridgeTooling(cwd);
+    await this.runner.runChecked(["add", "--all", "--", ...productStagingPathspecs], { cwd });
     const staged = await this.runner.run(
       ["diff", "--cached", "--quiet", "--exit-code"],
       { cwd },
@@ -371,10 +380,12 @@ export class GitSafetyService {
     await this.verifyManagedEnvironment(task, environment);
     const cwd = environment.taskWorktreePath;
 
-    await this.runner.runChecked(["add", "--all"], { cwd });
+    await this.unstageUnityBridgeTooling(cwd);
+    await this.runner.runChecked(["add", "--all", "--", ...productStagingPathspecs], { cwd });
     await this.runner.runChecked(["reset", "--soft", environment.baseCommit], {
       cwd,
     });
+    await this.unstageUnityBridgeTooling(cwd);
 
     const staged = await this.runner.run(
       ["diff", "--cached", "--quiet", "--exit-code"],
@@ -871,6 +882,19 @@ export class GitSafetyService {
         "Managed worktree rollback did not reach the requested clean state.",
       );
     }
+  }
+
+  private async unstageUnityBridgeTooling(cwd: string): Promise<void> {
+    await this.runner.runChecked(
+      [
+        "reset",
+        "--quiet",
+        "--",
+        unityBridgeToolingPath,
+        `${unityBridgeToolingPath}.meta`,
+      ],
+      { cwd },
+    );
   }
 
   private throwCommandFailure(

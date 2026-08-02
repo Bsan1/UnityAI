@@ -117,6 +117,9 @@ code { color: #85d8f3; }
 .suggestion p { margin: .2rem 0 0; }
 .failure-card { border-color: #713e42; background: #23181b; }
 .ready-card { border-color: #386d52; background: #111f19; }
+.unity-status-card { border-color: #355d78; background: #111c26; }
+.unity-grid div { border-color: #31536b; background: #142431; }
+.unity-grid small { color: #75a5c2; }
 .result-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: .7rem; margin: 1rem 0; }
 .result-grid div { display: grid; gap: .35rem; padding: .8rem; border: 1px solid #2d5942; border-radius: .55rem; background: #14271d; }
 .result-grid small { color: #739a83; }

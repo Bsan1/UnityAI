@@ -12,6 +12,7 @@
   "dependencies": {
     "@unityai/core": "0.1.0",
     "@unityai/shared": "0.1.0",
+    "@unityai/unity": "0.1.0",
     "ajv": "^8.20.0"
   },
   "devDependencies": {

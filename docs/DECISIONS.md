@@ -88,3 +88,11 @@ A normal blocked-task recheck reuses a valid persisted interpretation and invoke
 **Decision:** Approved implementation begins only after an explicit user start. One in-process orchestration run owns the task, prepares the existing M2 environment, runs the approved Implementation route inside the verified managed worktree, and records an internal implementation checkpoint. Cross Review runs only when the task's binary setting is on, uses its approved route read-only, and never applies fixes.
 
 The concrete terminal M5 state is `READY_FOR_QA`. It means implementation and optional review finished; it is not QA success, task completion, or permission to finalize, merge, or push Git history. Provider failure, cancellation, or restart interruption preserves the managed worktree and never escalates the model.
+
+## D-017: Unity integration is temporary, explicit, and loopback-only
+
+**Decision:** The reusable UnityAI Editor Bridge is temporary tooling copied as an embedded package only into an exact, ownership-verified M2 task worktree (or a dedicated disposable validation project). UnityAI never automatically installs it into the user's original project worktree. A task/fingerprint marker is required for idempotent install and removal; a name-only match is insufficient. The package and generated metadata are excluded from task checkpoint/finalization staging and must be removed before a future final task commit.
+
+Each Editor session uses a random authenticated descriptor under the non-versioned `Library/UnityAI` area and a TCP listener bound only to numeric loopback. Network work is queued to Unity's main thread. Unity capabilities are a fixed set of bounded, structured commands; arbitrary C# execution, reflection/menu invocation, filesystem, shell, and process access are intentionally absent. The stdio Unity MCP server reuses the same validated Node bridge client/protocol instead of implementing another transport.
+
+M6 supplies inspection and Editor control capabilities only. It does not inject input, capture visual QA, decide pass/fail, build gameplay probes, run automatic fixes, or perform player-like gameplay validation; those remain bounded work for M7/M8.

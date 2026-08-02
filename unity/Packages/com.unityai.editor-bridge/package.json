@@ -1,0 +1,14 @@
+{
+  "name": "com.unityai.editor-bridge",
+  "version": "0.1.0",
+  "displayName": "UnityAI Editor Bridge",
+  "description": "Temporary Editor-only loopback bridge used by UnityAI-managed task worktrees.",
+  "keywords": [
+    "unityai",
+    "editor",
+    "automation"
+  ],
+  "author": {
+    "name": "UnityAI"
+  }
+}

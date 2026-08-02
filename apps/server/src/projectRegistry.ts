@@ -20,6 +20,7 @@ export interface ProjectRecord {
   readonly id: ProjectId;
   readonly displayName: string;
   readonly path: string;
+  readonly unityEditorPath?: string;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly lastUsedAt?: string;
@@ -75,10 +76,14 @@ const parseProject = (value: unknown): ProjectRecord => {
   const lastUsedAt = input.lastUsedAt === undefined
     ? undefined
     : parseTimestamp(input.lastUsedAt, "project.lastUsedAt");
+  const unityEditorPath = input.unityEditorPath === undefined
+    ? undefined
+    : requireString(input.unityEditorPath, "project.unityEditorPath");
   return {
     id: id as ProjectId,
     displayName: requireString(input.displayName, "project.displayName"),
     path: requireString(input.path, "project.path"),
+    ...(unityEditorPath === undefined ? {} : { unityEditorPath }),
     createdAt: parseTimestamp(input.createdAt, "project.createdAt"),
     updatedAt: parseTimestamp(input.updatedAt, "project.updatedAt"),
     ...(lastUsedAt === undefined ? {} : { lastUsedAt }),
@@ -182,6 +187,14 @@ export class ProjectRegistry {
       id: `PROJECT-${String(this.nextSequence).padStart(4, "0")}`,
       displayName,
       path: repositoryRoot,
+      ...(input.unityEditorPath === undefined
+        ? {}
+        : {
+            unityEditorPath: requireString(
+              input.unityEditorPath,
+              "project input.unityEditorPath",
+            ),
+          }),
       createdAt: timestamp,
       updatedAt: timestamp,
     };
@@ -195,10 +208,18 @@ export class ProjectRegistry {
     const current = this.get(id);
     const input = requireRecord(value, "project patch");
     const keys = Object.keys(input);
-    if (keys.length === 0 || keys.some((key) => key !== "displayName" && key !== "path")) {
+    if (
+      keys.length === 0 ||
+      keys.some(
+        (key) =>
+          key !== "displayName" &&
+          key !== "path" &&
+          key !== "unityEditorPath",
+      )
+    ) {
       throw new ServerError(
         "VALIDATION_ERROR",
-        "Project patch may contain only displayName and path.",
+        "Project patch may contain only displayName, path, and unityEditorPath.",
         400,
       );
     }
@@ -208,11 +229,18 @@ export class ProjectRegistry {
     const projectPath = input.path === undefined
       ? current.path
       : await this.validateGitPath(requireString(input.path, "project patch.path"));
+    const unityEditorPath = input.unityEditorPath === undefined
+      ? current.unityEditorPath
+      : input.unityEditorPath === null
+        ? undefined
+        : requireString(input.unityEditorPath, "project patch.unityEditorPath");
     this.assertUniquePath(projectPath, current.id);
+    const { unityEditorPath: _previousUnityEditorPath, ...currentWithoutEditorPath } = current;
     const updated: ProjectRecord = {
-      ...current,
+      ...currentWithoutEditorPath,
       displayName,
       path: projectPath,
+      ...(unityEditorPath === undefined ? {} : { unityEditorPath }),
       updatedAt: new Date().toISOString(),
     };
     this.data = {

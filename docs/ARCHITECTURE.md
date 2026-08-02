@@ -1,14 +1,16 @@
 # Architecture
 
-## Current M5 state
+## Current M6 state
 
-UnityAI remains a small npm workspace with four independently named workspaces:
+UnityAI remains a small npm workspace with six independently named workspaces:
 
 ```text
 apps/web       React + Vite local project/task workflow
-apps/server    Local HTTP server, JSON stores, analysis/implementation orchestration, AI and Git adapters
+apps/server    Local HTTP server, JSON stores, orchestration, and concrete Git/AI/Unity lifecycle adapters
+apps/unity-mcp Focused MCP stdio facade over the shared Unity bridge client
 packages/core  Pure task/Git/agent/model/analysis/orchestration types, validation, and rules
 packages/shared Shared HTTP contract types
+packages/unity Unity project metadata, Editor resolution, bridge protocol, client, and validation
 ```
 
 The browser provides project registration, task creation/history, analysis and blocked actions, Task Contract editing/approval, implementation start, polling progress, and implementation/review results. Vite proxies local API paths to the server. The server still uses Node's built-in HTTP module; no backend framework or database is present.
@@ -20,6 +22,7 @@ The browser provides project registration, task creation/history, analysis and b
 ```text
 runtime/tasks/TASK-0001/task.json
 runtime/tasks/TASK-0001/git.json
+runtime/tasks/TASK-0001/unity.json
 runtime/tasks/TASK-0002/task.json
 runtime/worktrees/TASK-0001/
 ```
@@ -115,17 +118,39 @@ runtime/tasks/TASK-0001/orchestration/git-status.json
 
 The browser polls normalized progress/events; no chat transcript, chain-of-thought, WebSocket, queue, or distributed worker exists. `READY_FOR_QA` means implementation plus optional review completed. It is not `COMPLETED`, does not represent QA evidence, and does not finalize, merge, or push Git history.
 
+M6 adds a project-independent Unity capability layer without changing task workflow state:
+
+```text
+UnityAI server / Unity MCP
+          -> shared UnityBridgeClient
+          -> authenticated newline-delimited JSON on 127.0.0.1
+          -> Editor-only UnityAI bridge package
+          -> queued Unity main-thread commands
+```
+
+`UnityProjectAdapter` performs bounded structural inspection of `Assets`, `Packages`, `ProjectSettings/ProjectVersion.txt`, package manifests, Input System indicators, and safely available scripting metadata. `UnityEditorResolver` honors an optional project-specific executable override, otherwise selects an exact project-version match from common Unity Hub locations. It never downloads an Editor or initializes a project.
+
+The reusable source package lives at `unity/Packages/com.unityai.editor-bridge`. `UnityEnvironmentService` copies it only to the exact M2-managed worktree as an embedded package. A task-specific ownership marker and source fingerprint make installation idempotent and make conflicts/removal fail closed. The original external worktree is rejected as an installation or removal target. Git checkpoint/finalization staging explicitly excludes this temporary package and its sibling `.meta` file; future finalization must remove the package first.
+
+Each Editor session binds an ephemeral port on `127.0.0.1`, generates a cryptographically random token, and writes its descriptor only under `Library/UnityAI/bridge-session.json`. The Node client validates protocol version, loopback host, port, process ID, and exact expected canonical project root before sending the token. Tokens are not copied to `unity.json` or task events. Requests and responses are bounded, time-limited, cancellable, and restricted to known methods. Network work is queued for execution through `EditorApplication.update`, so background listener threads do not manipulate Unity objects.
+
+The explicit bridge command surface is `bridge.ping`, `editor.status`, `editor.requestCompilation`, `play.enter`, `play.exit`, `play.setPaused`, `console.get`, `scene.summary`, `scene.hierarchy`, and `object.snapshot`. Console data is bounded and reports `complete: false` because M6 uses a public callback-backed partial log source. Scene/object inspection is read-only and bounded. There is no arbitrary C#, reflection, menu, filesystem, shell, process, asset, prefab, or scene-editing command.
+
+`UnityEditorProcessManager` launches an argument array with `shell: false` and `-projectPath` set to the registered managed worktree. Stop is allowed only for a process UnityAI launched whose recorded project/session identity still matches; merely connected Editors are not owned. Restart revalidates persisted metadata and the current descriptor instead of trusting an old PID. `waitForUnityIdle` deterministically polls compilation/update state and tolerates the expected short bridge reconnect window caused by Unity domain reload.
+
+`apps/unity-mcp` uses the same `UnityBridgeClient` and exposes ten correspondingly focused stdio tools. It connects to one expected managed project per process and owns no installation, launch, task-state, QA, or pass/fail logic. M6 establishes Editor capabilities only: it does not run QA, inject input, capture screenshots, execute fixes, or decide acceptance.
+
 ## Planned architecture
 
-The following boundaries guide later milestones. Only the M0-M5 portions described above are implemented.
+The following boundaries guide later milestones. Only the M0-M6 portions described above are implemented.
 
 ### Local application boundary
 
-UnityAI runs as its own local application. A selected Unity game is an external target identified by an absolute filesystem path. Target-specific state must not leak into global application definitions. A reusable Unity-side package or bridge may be added later without embedding the orchestrator in a game.
+UnityAI runs as its own local application. A selected Unity game is an external target identified by an absolute filesystem path. Target-specific state must not leak into global application definitions. The reusable Unity-side package is temporary tooling copied into a managed task worktree; it does not embed the orchestrator in a game.
 
 ### Web application
 
-The React application presents project selection, task drafting, contract approval, blocked-task actions, implementation progress, and pre-QA results. It sends commands over ordinary HTTP and polls progress. M6+ may extend it with Unity and QA evidence without changing the local application boundary.
+The React application presents project selection, task drafting, contract approval, blocked-task actions, implementation progress, pre-QA results, and a small Unity tooling/status section. It sends commands over ordinary HTTP and polls progress. M7+ may extend it with QA evidence without changing the local application boundary.
 
 ### Local server
 
@@ -141,7 +166,7 @@ An agent definition owns role, instructions, permissions, tools, context rules, 
 
 ### Target project adapters
 
-The filesystem/native-Git adapter now inspects external repositories and safely modifies only verified managed task worktrees. A later Unity adapter and reusable Unity-side bridge will expose project structure, editor state, Play Mode, and test evidence. M2 records one task as the write owner; later orchestration will enforce that only its writing agent uses the worktree, while read-only reviewers may inspect independently.
+The filesystem/native-Git adapter inspects external repositories and safely modifies only verified managed task worktrees. The Unity adapter and reusable Unity-side bridge now expose bounded project structure, Editor state, Play Mode control, console data, and read-only scene/object snapshots. M2 records one task as the write owner. M7/M8 may consume these capabilities as evidence, but M6 does not interpret them as QA results.
 
 ### Persistence and configuration
 
@@ -153,8 +178,9 @@ Later code should keep dependencies pointing inward:
 
 ```text
 web -> shared contracts
-server -> core domain + shared contracts
-provider/Git/Unity adapters -> core-defined types and use cases
+server -> core domain + shared contracts + Unity capability package
+unity-mcp -> Unity bridge client/protocol
+provider/Git adapters -> core-defined types and use cases
 core domain -> no concrete adapter
 ```
 

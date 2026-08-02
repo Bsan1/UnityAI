@@ -11,7 +11,12 @@ import {
 import type { TaskDetailsResponse } from "@unityai/shared";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { BlockedView, ReadyForQa } from "../src/App.js";
+import {
+  BlockedView,
+  ProjectUnityStatus,
+  ReadyForQa,
+  UnityTooling,
+} from "../src/App.js";
 import { ApiError, userMessageForError } from "../src/api.js";
 
 const settings = {
@@ -182,4 +187,64 @@ test("dirty-worktree errors are translated into actionable UI copy", () => {
   );
   assert.match(message, /will not modify or stash/u);
   assert.match(message, /Commit or clean/u);
+});
+
+test("M6 project and task tooling UI renders Unity status without claiming QA", () => {
+  const projectMarkup = renderToStaticMarkup(
+    <ProjectUnityStatus
+      error={undefined}
+      inspection={{
+        projectId: "PROJECT-0001",
+        metadata: {
+          schemaVersion: 1,
+          isUnityProject: true,
+          projectRoot: "C:/project",
+          unityVersion: "6000.3.11f1",
+          projectVersionFile: "C:/project/ProjectSettings/ProjectVersion.txt",
+          manifestFile: "C:/project/Packages/manifest.json",
+          packageLockPresent: true,
+          packages: [{ name: "com.unity.inputsystem", version: "1.11.2" }],
+          inputSystem: { packagePresent: true, activeInputHandling: "NEW" },
+          scripting: {},
+          inspectedAt: new Date().toISOString(),
+        },
+        editor: {
+          found: true,
+          requestedVersion: "6000.3.11f1",
+          executablePath: "C:/Unity/Editor/Unity.exe",
+          resolutionMethod: "UNITY_HUB_EXACT_VERSION",
+        },
+      }}
+    />,
+  );
+  assert.match(projectMarkup, /Unity 6000\.3\.11f1/u);
+  assert.match(projectMarkup, /Package present/u);
+
+  const toolingMarkup = renderToStaticMarkup(
+    <UnityTooling
+      status={{
+        bridge: "CONNECTED",
+        editor: "RUNNING",
+        ownedEditor: true,
+        editorStatus: {
+          isPlaying: true,
+          isPaused: false,
+          isCompiling: false,
+          isUpdating: false,
+          activeScene: "SampleScene",
+          activePlatform: "StandaloneWindows64",
+        },
+      }}
+      busy={false}
+      onPrepare={() => undefined}
+      onStart={() => undefined}
+      onWaitIdle={() => undefined}
+      onStop={() => undefined}
+      onRemove={() => undefined}
+    />,
+  );
+  assert.match(toolingMarkup, /M6 Unity tooling/u);
+  assert.match(toolingMarkup, /Playing/u);
+  assert.match(toolingMarkup, /do not run QA or decide whether the task passes/u);
+  assert.match(toolingMarkup, /original project is never used for installation/u);
 });

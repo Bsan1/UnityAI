@@ -8,6 +8,8 @@ import type {
   Task,
   TaskContract,
   TaskDetailsResponse,
+  UnityProjectInspectionResponse,
+  UnityTaskStatusResponse,
 } from "@unityai/shared";
 
 import { ApiError, api, userMessageForError } from "./api.js";
@@ -65,19 +67,29 @@ function ProjectForm({
   onAdd,
   busy,
 }: {
-  readonly onAdd: (displayName: string, path: string) => Promise<void>;
+  readonly onAdd: (
+    displayName: string,
+    path: string,
+    unityEditorPath?: string,
+  ) => Promise<void>;
   readonly busy: boolean;
 }) {
   const [displayName, setDisplayName] = useState("");
   const [path, setPath] = useState("");
+  const [unityEditorPath, setUnityEditorPath] = useState("");
   return (
     <form
       className="stack"
       onSubmit={(event) => {
         event.preventDefault();
-        void onAdd(displayName, path).then(() => {
+        void onAdd(
+          displayName,
+          path,
+          unityEditorPath.trim().length === 0 ? undefined : unityEditorPath.trim(),
+        ).then(() => {
           setDisplayName("");
           setPath("");
+          setUnityEditorPath("");
         });
       }}
     >
@@ -88,6 +100,14 @@ function ProjectForm({
           value={displayName}
           onChange={(event) => setDisplayName(event.target.value)}
           placeholder="Tower Defense"
+        />
+      </label>
+      <label>
+        Unity Editor override (optional)
+        <input
+          value={unityEditorPath}
+          onChange={(event) => setUnityEditorPath(event.target.value)}
+          placeholder="C:\\Program Files\\Unity\\Hub\\Editor\\6000.3.11f1\\Editor\\Unity.exe"
         />
       </label>
       <label>
@@ -310,6 +330,9 @@ export function App() {
   const [selectedProjectId, setSelectedProjectId] = useState("");
   const [selectedTaskId, setSelectedTaskId] = useState<string | undefined>();
   const [details, setDetails] = useState<TaskDetailsResponse | undefined>();
+  const [projectUnity, setProjectUnity] = useState<UnityProjectInspectionResponse | undefined>();
+  const [projectUnityError, setProjectUnityError] = useState<string | undefined>();
+  const [taskUnity, setTaskUnity] = useState<UnityTaskStatusResponse | undefined>();
   const [taskRequest, setTaskRequest] = useState("");
   const [taskTitle, setTaskTitle] = useState("");
   const [showProjectForm, setShowProjectForm] = useState(false);
@@ -387,6 +410,50 @@ export function App() {
     [projects, selectedProjectId],
   );
 
+  useEffect(() => {
+    setProjectUnity(undefined);
+    setProjectUnityError(undefined);
+    if (selectedProject === undefined) {
+      return;
+    }
+    const controller = new AbortController();
+    void api.inspectUnityProject(selectedProject.id)
+      .then((inspection) => {
+        if (!controller.signal.aborted) {
+          setProjectUnity(inspection);
+        }
+      })
+      .catch((caught: unknown) => {
+        if (!controller.signal.aborted) {
+          setProjectUnityError(userMessageForError(caught));
+        }
+      });
+    return () => controller.abort();
+  }, [selectedProject]);
+
+  useEffect(() => {
+    setTaskUnity(undefined);
+    if (details?.task.state !== "READY_FOR_QA") {
+      return;
+    }
+    void api.getTaskUnity(details.task.id)
+      .then(setTaskUnity)
+      .catch((caught: unknown) => setError(userMessageForError(caught)));
+  }, [details?.task.id, details?.task.state]);
+
+  useEffect(() => {
+    if (
+      details?.task.state !== "READY_FOR_QA" ||
+      taskUnity?.editor !== "RUNNING"
+    ) {
+      return;
+    }
+    const interval = window.setInterval(() => {
+      void api.getTaskUnity(details.task.id).then(setTaskUnity).catch(() => undefined);
+    }, 1500);
+    return () => window.clearInterval(interval);
+  }, [details?.task.id, details?.task.state, taskUnity?.editor]);
+
   const run = async (action: () => Promise<unknown>, refresh = true) => {
     setBusy(true);
     setError(undefined);
@@ -405,9 +472,17 @@ export function App() {
     }
   };
 
-  const addProject = async (displayName: string, path: string) => {
+  const addProject = async (
+    displayName: string,
+    path: string,
+    unityEditorPath?: string,
+  ) => {
     await run(async () => {
-      const project = await api.createProject({ displayName, path });
+      const project = await api.createProject({
+        displayName,
+        path,
+        ...(unityEditorPath === undefined ? {} : { unityEditorPath }),
+      });
       await refreshLists();
       setSelectedProjectId(project.id);
       setShowProjectForm(false);
@@ -437,6 +512,16 @@ export function App() {
   };
 
   const selectedState = details?.task.state;
+
+  const runUnity = async (action: () => Promise<unknown>) => {
+    if (details === undefined) {
+      return;
+    }
+    await run(async () => {
+      await action();
+      setTaskUnity(await api.getTaskUnity(details.task.id));
+    }, false);
+  };
 
   return (
     <div className="app-shell">
@@ -511,12 +596,19 @@ export function App() {
             <ProjectForm onAdd={addProject} busy={busy} />
             {projects.map((project) => (
               <div className="project-row" key={project.id}>
-                <span><strong>{project.displayName}</strong><small>{project.path}</small></span>
+                <span><strong>{project.displayName}</strong><small>{project.path}</small>{project.unityEditorPath === undefined ? null : <small>Editor: {project.unityEditorPath}</small>}</span>
                 <button className="danger-text" type="button" onClick={() => void run(() => api.deleteProject(project.id))}>Remove record</button>
               </div>
             ))}
             <p className="notice">Removing a project here deletes only UnityAI metadata. Project files are never deleted.</p>
           </section>
+        ) : null}
+
+        {selectedTaskId === undefined && selectedProject !== undefined ? (
+          <ProjectUnityStatus
+            inspection={projectUnity}
+            error={projectUnityError}
+          />
         ) : null}
 
         {selectedTaskId === undefined ? (
@@ -678,7 +770,20 @@ export function App() {
               </section>
             ) : null}
 
-            {selectedState === "READY_FOR_QA" ? <ReadyForQa details={details} /> : null}
+            {selectedState === "READY_FOR_QA" ? (
+              <>
+                <ReadyForQa details={details} />
+                <UnityTooling
+                  status={taskUnity}
+                  busy={busy}
+                  onPrepare={() => void runUnity(() => api.prepareTaskUnity(details.task.id))}
+                  onStart={() => void runUnity(() => api.startUnityEditor(details.task.id))}
+                  onWaitIdle={() => void runUnity(() => api.waitForUnityIdle(details.task.id))}
+                  onStop={() => void runUnity(() => api.stopUnityEditor(details.task.id))}
+                  onRemove={() => void runUnity(() => api.removeUnityBridge(details.task.id))}
+                />
+              </>
+            ) : null}
 
             <details className="debug-details">
               <summary>Technical details</summary>
@@ -756,6 +861,87 @@ export function BlockedView({
         <button disabled={busy} type="button" onClick={onCancel}>Cancel</button>
       </div>
       <p className="notice">Recheck reuses the interpretation and performs one new read-only Feasibility pass against the current repository.</p>
+    </section>
+  );
+}
+
+export function ProjectUnityStatus({
+  inspection,
+  error,
+}: {
+  readonly inspection: UnityProjectInspectionResponse | undefined;
+  readonly error: string | undefined;
+}) {
+  return (
+    <section className="panel unity-status-card">
+      <p className="eyebrow">Unity project</p>
+      {inspection === undefined ? (
+        <>
+          <h2>{error === undefined ? "Inspecting project structure…" : "Unity metadata unavailable"}</h2>
+          {error === undefined ? null : <p>{error}</p>}
+        </>
+      ) : (
+        <>
+          <h2>Unity {inspection.metadata.unityVersion}</h2>
+          <div className="result-grid unity-grid">
+            <div><small>Unity Project</small><strong>Yes</strong></div>
+            <div><small>Editor</small><strong>{inspection.editor.found ? "Found" : "Missing"}</strong></div>
+            <div><small>Input System</small><strong>{inspection.metadata.inputSystem.packagePresent ? "Package present" : "Not detected"}</strong></div>
+            <div><small>Packages</small><strong>{inspection.metadata.packages.length}</strong></div>
+          </div>
+          {inspection.editor.found ? (
+            <p className="notice">{inspection.editor.resolutionMethod}: {inspection.editor.executablePath}</p>
+          ) : (
+            <p className="important">{inspection.editor.error.message}</p>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+export function UnityTooling({
+  status,
+  busy,
+  onPrepare,
+  onStart,
+  onWaitIdle,
+  onStop,
+  onRemove,
+}: {
+  readonly status: UnityTaskStatusResponse | undefined;
+  readonly busy: boolean;
+  readonly onPrepare: () => void;
+  readonly onStart: () => void;
+  readonly onWaitIdle: () => void;
+  readonly onStop: () => void;
+  readonly onRemove: () => void;
+}) {
+  const editorStatus = status?.editorStatus;
+  const installed = status?.bridge !== undefined && status.bridge !== "NOT_INSTALLED";
+  const connected = status?.bridge === "CONNECTED";
+  return (
+    <section className="panel unity-status-card">
+      <p className="eyebrow">M6 Unity tooling</p>
+      <h2>Unity Environment</h2>
+      <p className="notice">These controls prepare Editor capabilities only. They do not run QA or decide whether the task passes.</p>
+      <div className="result-grid unity-grid">
+        <div><small>Bridge</small><strong>{status?.bridge ?? "Not installed"}</strong></div>
+        <div><small>Editor</small><strong>{status?.editor ?? "Stopped"}</strong></div>
+        <div><small>Compile</small><strong>{editorStatus?.isCompiling ? "Compiling" : connected ? "Idle" : "Unavailable"}</strong></div>
+        <div><small>Play Mode</small><strong>{editorStatus?.isPlaying ? editorStatus.isPaused ? "Paused" : "Playing" : "Edit"}</strong></div>
+      </div>
+      {status?.diagnostic === undefined ? null : (
+        <p className="important">{status.diagnostic.code}: {status.diagnostic.message}</p>
+      )}
+      <div className="actions wrap">
+        <button className="primary" disabled={busy || installed} type="button" onClick={onPrepare}>Prepare Unity</button>
+        <button disabled={busy || !installed || status?.editor === "RUNNING"} type="button" onClick={onStart}>Start Editor</button>
+        <button disabled={busy || !connected} type="button" onClick={onWaitIdle}>Wait until idle</button>
+        <button disabled={busy || !status?.ownedEditor} type="button" onClick={onStop}>Stop Editor</button>
+        <button disabled={busy || !installed || status?.editor === "RUNNING"} type="button" onClick={onRemove}>Remove bridge</button>
+      </div>
+      <p className="notice">The bridge is temporary tooling in the managed worktree. The original project is never used for installation.</p>
     </section>
   );
 }

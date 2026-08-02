@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 
 import { TaskDomainError, applicationInfo } from "@unityai/core";
+import { UnityIntegrationError } from "@unityai/unity";
 import type { HealthResponse } from "@unityai/shared";
 
 import type { AIService } from "./aiService.js";
@@ -13,12 +14,14 @@ import type { ProjectRegistry } from "./projectRegistry.js";
 import type { SettingsStore } from "./settingsStore.js";
 import type { TaskService } from "./taskService.js";
 import type { WorkflowService } from "./workflowService.js";
+import type { UnityEnvironmentService } from "./unityEnvironmentService.js";
 
 export interface M5ServerServices {
   readonly projects: ProjectRegistry;
   readonly settings: SettingsStore;
   readonly workflow: WorkflowService;
   readonly orchestrator: ImplementationOrchestrator;
+  readonly unity?: UnityEnvironmentService;
 }
 
 const maximumBodyBytes = 1_048_576;
@@ -403,6 +406,19 @@ const handleRequest = async (
     }
   }
 
+  const projectUnityRoute = /^\/projects\/(PROJECT-\d{4,})\/unity$/.exec(path);
+  if (
+    projectUnityRoute !== null &&
+    request.method === "GET" &&
+    m5?.unity !== undefined
+  ) {
+    const projectId = projectUnityRoute[1];
+    if (projectId !== undefined) {
+      sendJson(response, 200, await m5.unity.inspectProject(projectId));
+      return;
+    }
+  }
+
   const projectRoute = /^\/projects\/(PROJECT-\d{4,})$/.exec(path);
   if (projectRoute !== null && m5 !== undefined) {
     const projectId = projectRoute[1];
@@ -451,6 +467,54 @@ const handleRequest = async (
     }
   }
 
+  const unityRoute = /^\/tasks\/(TASK-\d{4,})\/unity(?:\/(editor|bridge)(?:\/([a-z-]+))?)?$/.exec(path);
+  if (unityRoute !== null && m5?.unity !== undefined) {
+    const id = unityRoute[1];
+    const area = unityRoute[2];
+    const action = unityRoute[3];
+    if (id !== undefined && area === undefined && request.method === "GET") {
+      sendJson(response, 200, await m5.unity.status(id));
+      return;
+    }
+    if (id !== undefined && area === undefined && request.method === "POST") {
+      sendJson(response, 200, { environment: await m5.unity.prepare(id) });
+      return;
+    }
+    if (id !== undefined && area === "editor" && action === "status" && request.method === "GET") {
+      sendJson(response, 200, await m5.unity.status(id));
+      return;
+    }
+    if (id !== undefined && area === "editor" && action === "start" && request.method === "POST") {
+      const controller = new AbortController();
+      const abort = (): void => controller.abort();
+      request.once("aborted", abort);
+      try {
+        sendJson(response, 200, await m5.unity.startEditor(id, controller.signal));
+      } finally {
+        request.off("aborted", abort);
+      }
+      return;
+    }
+    if (id !== undefined && area === "editor" && action === "stop" && request.method === "POST") {
+      sendJson(response, 200, await m5.unity.stopEditor(id));
+      return;
+    }
+    if (id !== undefined && area === "editor" && action === "wait-idle" && request.method === "POST") {
+      const body = await readJsonBody(request);
+      const input = typeof body === "object" && body !== null && !Array.isArray(body)
+        ? body as { readonly timeoutMs?: number }
+        : {};
+      sendJson(response, 200, {
+        editorStatus: await m5.unity.waitForIdle(id, input),
+      });
+      return;
+    }
+    if (id !== undefined && area === "bridge" && action === "remove" && request.method === "POST") {
+      sendJson(response, 200, await m5.unity.removeBridge(id));
+      return;
+    }
+  }
+
   const taskRoute = /^\/tasks\/(TASK-\d{4,})(?:\/([a-z-]+))?$/.exec(path);
   if (taskRoute !== null) {
     const id = taskRoute[1];
@@ -491,6 +555,32 @@ const handleError = (response: ServerResponse, error: unknown): void => {
 
   if (error instanceof ServerError) {
     sendJson(response, error.statusCode, {
+      error: {
+        code: error.code,
+        message: error.message,
+        ...(error.details === undefined ? {} : { details: error.details }),
+      },
+    });
+    return;
+  }
+
+  if (error instanceof UnityIntegrationError) {
+    const statusCode =
+      error.code === "UNITY_BRIDGE_NOT_INSTALLED" ||
+      error.code === "UNITY_BRIDGE_NOT_CONNECTED"
+        ? 404
+        : error.code === "UNITY_BRIDGE_CONFLICT" ||
+            error.code === "UNITY_BRIDGE_OWNERSHIP_MISMATCH" ||
+            error.code === "EDITOR_NOT_OWNED"
+          ? 409
+          : error.code === "UNITY_BRIDGE_TIMEOUT"
+            ? 504
+            : error.code === "UNITY_EDITOR_START_FAILED" ||
+                error.code === "UNITY_EDITOR_EXITED" ||
+                error.code === "UNITY_COMMAND_FAILED"
+              ? 502
+              : 422;
+    sendJson(response, statusCode, {
       error: {
         code: error.code,
         message: error.message,

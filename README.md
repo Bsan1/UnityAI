@@ -4,7 +4,7 @@ UnityAI is a standalone, local AI development orchestrator for external Unity ga
 
 ## Current status
 
-The repository has completed **M5 - Basic User Interface and End-to-End Implementation Orchestrator**. It currently provides:
+The repository has completed **M6 - Unity Project Adapter, Editor Bridge, and Unity MCP Foundation**. It currently provides:
 
 - an npm workspace;
 - a strict core task model with explicit lifecycle transitions and audit history;
@@ -25,16 +25,24 @@ The repository has completed **M5 - Basic User Interface and End-to-End Implemen
 - an approval-gated background orchestrator that prepares M2 worktrees, runs the approved Implementation route, checkpoints changes, and optionally runs Cross Review;
 - persisted implementation/review results, interruption/failure records, polling progress, and the explicit `READY_FOR_QA` state;
 - a local React/Vite UI for projects, task history, analysis, contract editing/approval, blocked actions, progress, implementation, and review results;
-- a Node.js/TypeScript HTTP server with health, project, task, Git, AI-development, analysis, and M5 workflow APIs;
-- small `core` and `shared` TypeScript packages; and
+- cheap read-only Unity project/version/package/Input System inspection and exact-version Unity Hub Editor resolution;
+- a temporary Editor-only `com.unityai.editor-bridge` package installed only in verified M2 task worktrees;
+- an authenticated, size-bounded, loopback-only Unity protocol with main-thread command dispatch;
+- structured Editor status, compilation, Play Mode, bounded console, scene, hierarchy, and object snapshot commands;
+- a reusable Node `UnityBridgeClient`, owned Unity Editor process lifecycle, idle waiting, and restart revalidation;
+- a stdio Unity MCP server exposing only ten explicit Unity tools;
+- a Node.js/TypeScript HTTP server with health, project, task, Git, AI-development, analysis, workflow, and Unity tooling APIs;
+- small `core`, `shared`, and `unity` TypeScript packages; and
 - product and architecture documentation.
 
-M1's manually supplied feasibility/contract routes and M3's explicit AI route remain development support. M4 analysis still stops for approval; M5 continues only after an explicit implementation start. The flow stops at `READY_FOR_QA`: real QA, automatic fixes, Unity integration, dependency installation, final Git squash, merging, and pushing are intentionally not implemented. M6 is next.
+M1's manually supplied feasibility/contract routes and M3's explicit AI route remain development support. M4 analysis still stops for approval; M5 continues only after an explicit implementation start. M6 adds Unity capabilities alongside `READY_FOR_QA` without deciding QA results. QA planning/execution, automatic fixes, input injection, screenshots/vision, player-like testing, final Git squash, merging, and pushing are intentionally not implemented. M7 is next.
 
 ## Requirements
 
 - Node.js 22.12 or newer
 - npm 10 or newer
+- Git installed locally
+- Unity Editor only for live Editor/bridge use; deterministic development checks do not launch Unity
 
 ## Get started
 
@@ -54,7 +62,7 @@ npm run dev:web
 
 The server listens on `http://127.0.0.1:3000` by default. The Vite development server proxies the local API routes to it. Set `UNITYAI_PORT` to change the server port, `UNITYAI_RUNTIME_PATH` to use a different runtime-data directory, or `UNITYAI_CONFIG_PATH` to load different task defaults. M3 also supports `UNITYAI_AGENTS_PATH`, `UNITYAI_MODELS_CONFIG_PATH`, and `UNITYAI_PROVIDERS_CONFIG_PATH`; configuration changes require a restart.
 
-Open `http://localhost:5173` for the M5 UI. Add a Git project path, create and analyze a task, approve its contract, then explicitly start implementation. Long-running implementation/review work continues in the local server and the UI polls persisted progress.
+Open `http://localhost:5173` for the local UI. Add a Git project path, create and analyze a task, approve its contract, then explicitly start implementation. Long-running implementation/review work continues in the local server and the UI polls persisted progress. Project details show cheap Unity metadata; a `READY_FOR_QA` task offers explicit Prepare/Start/Wait/Stop/Remove Unity tooling controls.
 
 ## Task and M4 analysis API
 
@@ -105,7 +113,7 @@ The task branch is `ai/TASK-0001`; the worktree defaults to `runtime/worktrees/T
 
 ## Persistence
 
-Projects and global defaults are stored in `runtime/projects.json` and `runtime/settings.json`. Tasks use `runtime/tasks/TASK-0001/task.json`; M2 Git metadata remains in `git.json`, and M4 analysis remains under `analysis/`. M5 writes `implementation/result.json`, `review/result.json`, and orchestration failure/Git snapshot data beside the task. Writes use a temporary file followed by a same-directory rename. Persisted content is validated on read, and invalid metadata fails clearly.
+Projects and global defaults are stored in `runtime/projects.json` and `runtime/settings.json`. Tasks use `runtime/tasks/TASK-0001/task.json`; M2 Git metadata remains in `git.json`, M4 analysis remains under `analysis/`, and M6 stores non-secret Unity lifecycle metadata in `unity.json`. M5 writes `implementation/result.json`, `review/result.json`, and orchestration failure/Git snapshot data beside the task. The bridge session token exists only in the worktree's non-versioned `Library/UnityAI/bridge-session.json`. Writes use a temporary file followed by a same-directory rename. Persisted content is validated on read, and invalid metadata fails clearly.
 
 ## Project and M5 workflow API
 
@@ -159,6 +167,49 @@ An explicit start validates the approved snapshot, asks M2 to prepare the dedica
 If Cross Review is `ON`, the persisted approved review route runs the `review` agent `READ_ONLY` against the same worktree. Findings are stored as future QA focus and never trigger a fix loop in M5. Cross Review `OFF` skips directly to `READY_FOR_QA`. The implementation and reviewer always use the approved per-task snapshot even if global routing changes later; failures never escalate models.
 
 Only one in-process orchestration run may mutate a task. Cancellation aborts an active provider process but preserves the managed worktree. A server restart marks orphaned `IMPLEMENTING`/`REVIEWING` state as a technical interruption rather than success. `READY_FOR_QA` means implementation and optional review finished; it does **not** mean QA passed, the task is complete, or Git was finalized.
+
+## M6 Unity integration
+
+`UnityProjectAdapter` performs bounded structural inspection of `Assets`, `Packages`, `ProjectSettings`, `ProjectVersion.txt`, package manifests, Input System presence/configuration, and safe scripting settings. `UnityEditorResolver` prefers a configured project-specific executable and otherwise requires an exact version under common Unity Hub locations; it never downloads an Editor.
+
+The source bridge is [`unity/Packages/com.unityai.editor-bridge`](unity/Packages/com.unityai.editor-bridge). Preparation copies it as an embedded package only to `runtime/worktrees/TASK-xxxx/Packages/com.unityai.editor-bridge`. A task/fingerprint marker makes installation idempotent and cleanup ownership-verifiable. A conflicting folder is never overwritten. M2 checkpoint/finalization staging explicitly excludes the bridge and its generated package `.meta`; future finalization must still remove temporary tooling first.
+
+The Editor listener binds only `127.0.0.1` on a random port and writes its random session token to `Library/UnityAI/bridge-session.json`. Every versioned newline-JSON request authenticates. Network threads only validate/enqueue; known Unity API commands execute through the Editor main-thread update queue. Request/response, console, hierarchy, object, and persisted metadata sizes are bounded. The bridge exposes no arbitrary C#, reflection/menu invocation, filesystem, shell, or process command.
+
+Implemented commands are `bridge.ping`, `editor.status`, `editor.requestCompilation`, `play.enter`, `play.exit`, `play.setPaused`, `console.get`, `scene.summary`, `scene.hierarchy`, and `object.snapshot`. Console capture is explicitly partial (`complete: false`) because it contains bounded logs observed during the bridge session. M6 was live-tested only with Unity **6000.3.11f1 on Windows**; the package uses public Editor APIs and keeps compatibility concerns isolated, but other versions are not claimed as tested.
+
+### Unity HTTP API
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/projects/:id/unity` | Inspect registered Unity metadata and resolve the configured/exact Editor |
+| `POST` | `/tasks/:id/unity` | Prepare the verified managed worktree and install the owned temporary bridge |
+| `GET` | `/tasks/:id/unity` | Read persisted/revalidated Unity environment status |
+| `POST` | `/tasks/:id/unity/editor/start` | Launch the resolved Editor only against the managed worktree and wait for its bridge |
+| `POST` | `/tasks/:id/unity/editor/stop` | Stop only an Editor launched and identity-validated by this server session |
+| `GET` | `/tasks/:id/unity/editor/status` | Read connection and normalized Editor state |
+| `POST` | `/tasks/:id/unity/editor/wait-idle` | Poll deterministically through compilation/domain reload until responsive and idle |
+| `POST` | `/tasks/:id/unity/bridge/remove` | Remove only the marker-verified managed bridge after the Editor stops |
+
+The project registry accepts an optional `unityEditorPath`. Removing a registry record or bridge never deletes project files. Server restart can reconnect to a matching live descriptor but does not claim process ownership or auto-launch Unity.
+
+### Unity MCP
+
+`apps/unity-mcp` is a stdio MCP server for exactly one expected managed Unity worktree:
+
+```bash
+node apps/unity-mcp/dist/main.js --projectPath <managed-worktree>
+```
+
+It reuses `UnityBridgeClient` and exposes `unity_ping`, `unity_editor_status`, `unity_request_compilation`, `unity_enter_play_mode`, `unity_exit_play_mode`, `unity_set_play_mode_paused`, `unity_console`, `unity_scene_summary`, `unity_scene_hierarchy`, and `unity_object_snapshot`. It does not install/launch the bridge, decide pass/fail, or expose arbitrary RPC, C#, shell, or filesystem tools.
+
+The bounded live smoke is available for an installed Editor after a normal build:
+
+```bash
+npx tsx scripts/liveM6Smoke.ts --unityExecutable "C:\\Program Files\\Unity\\Hub\\Editor\\6000.3.11f1\\Editor\\Unity.exe"
+```
+
+It creates a disposable Git/Unity fixture, never opens a registered user game project, directly exercises the bridge and MCP server, verifies the original temporary branch/worktree, stops its owned Editor, removes the bridge, and cleans the successful fixture.
 
 ## Documentation
 

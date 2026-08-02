@@ -1,6 +1,6 @@
 # Roadmap
 
-**M5 - Basic User Interface and End-to-End Orchestrator Flow is complete. M6 - Unity Project Adapter and Unity Bridge is next.** Milestones describe bounded increments; completing one does not authorize implementation of the next.
+**M6 - Unity Project Adapter and Unity Bridge is complete. M7 - QA and Automatic Fix Loop is next.** Milestones describe bounded increments; completing one does not authorize implementation of the next.
 
 ## M0 - Foundation (completed)
 
@@ -62,15 +62,15 @@
 
 **Completion criteria:** A user can register/select a Git target, analyze and edit/approve a contract, run one implementation only in its managed worktree, checkpoint changes, optionally receive a read-only cross-model review, inspect progress/results, and stop at `READY_FOR_QA`; dirty originals and failures remain safe, no model escalates, and no history is finalized, merged, or pushed.
 
-## M6 - Unity Project Adapter and Unity Bridge
+## M6 - Unity Project Adapter and Unity Bridge (completed)
 
 **Goal:** Add reusable, project-independent Unity inspection and control capabilities.
 
-**Major deliverables:** Unity project detection; reusable Unity package/bridge; editor/project metadata and structural inspection; compile and console access; scenes/prefabs/components/configuration queries; documented version compatibility.
+**Major deliverables:** Bounded Unity project/version/package inspection; optional per-project Editor override and exact Hub resolution; reusable temporary embedded Editor bridge with ownership marker; authenticated loopback protocol and main-thread queue; explicit Editor/compile/Play Mode/console/scene/hierarchy/object commands; reusable Node client; owned Editor launch/stop and restart revalidation; JSON lifecycle metadata; minimal HTTP/UI status controls; explicit stdio Unity MCP tools.
 
-**Explicit non-goals:** Complete automatic-fix loop, player-like gameplay testing, arbitrary per-game hacks, and embedding UnityAI in one project.
+**Explicit non-goals:** QA planning or pass/fail decisions; automatic fixes; input injection; screenshots/vision; runtime probe framework; player-like gameplay testing; arbitrary C#/reflection/menu/filesystem/shell execution; asset/scene editing; package/Editor downloading; final Git commit, merge, or push.
 
-**Completion criteria:** The same UnityAI installation connects to multiple sample projects; bridge setup is explicit and reusable; structural evidence and compiler results are returned reliably.
+**Completion criteria:** Valid/invalid projects and Editors resolve deterministically; bridge setup/removal can target only marker-verified M2 worktrees; original worktrees remain untouched; descriptors authenticate and cannot cross projects or use non-loopback hosts; fake transport/process/MCP coverage passes; the Editor package compiles and all commands, Play Mode transitions, and MCP ping/status succeed in one disposable live Unity project; temporary tooling is excluded from checkpoints and removed safely.
 
 ## M7 - QA and Automatic Fix Loop
 
