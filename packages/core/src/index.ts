@@ -79,6 +79,38 @@ export {
   parseReasoningEffort,
 } from "./aiValidation.js";
 export { TaskDomainError } from "./errors.js";
+export {
+  beginTaskImplementation,
+  completeTaskImplementation,
+  completeTaskReview,
+  failTaskExecution,
+  markPausedExecutionInterrupted,
+  recordTaskOrchestrationFailure,
+} from "./orchestrationDomain.js";
+export {
+  ORCHESTRATION_PHASES,
+  REVIEW_SEVERITIES,
+  REVIEW_STATUSES,
+} from "./orchestrationTypes.js";
+export type {
+  ImplementationAgentOutput,
+  ImplementationResult,
+  OrchestrationPhase,
+  ReviewAgentOutput,
+  ReviewFinding,
+  ReviewResult,
+  ReviewSeverity,
+  ReviewStatus,
+  TaskExecutionFailure,
+  TaskOrchestrationArtifacts,
+} from "./orchestrationTypes.js";
+export {
+  parseImplementationAgentOutput,
+  parseImplementationResult,
+  parseReviewAgentOutput,
+  parseReviewResult,
+  parseTaskExecutionFailure,
+} from "./orchestrationValidation.js";
 export { GIT_ENVIRONMENT_STATUSES } from "./gitTypes.js";
 export type {
   GitCheckpoint,

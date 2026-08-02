@@ -5,6 +5,7 @@ import type {
   TaskAnalysisFailure,
   TaskAnalysisSummary,
 } from "./analysisTypes.js";
+import type { TaskExecutionFailure } from "./orchestrationTypes.js";
 
 export const TASK_STATES = [
   "DRAFT",
@@ -16,6 +17,7 @@ export const TASK_STATES = [
   "READY_FOR_IMPLEMENTATION",
   "IMPLEMENTING",
   "REVIEWING",
+  "READY_FOR_QA",
   "TESTING",
   "FAILED",
   "FIXING",
@@ -54,6 +56,16 @@ export const TASK_EVENT_TYPES = [
   "TASK_CANCELLED",
   "RECHECK_REQUESTED",
   "PREREQUISITE_DRAFT_CREATED",
+  "GIT_ENVIRONMENT_PREPARED",
+  "IMPLEMENTATION_STARTED",
+  "IMPLEMENTATION_COMPLETED",
+  "IMPLEMENTATION_CHECKPOINT_CREATED",
+  "IMPLEMENTATION_FAILED",
+  "REVIEW_STARTED",
+  "REVIEW_COMPLETED",
+  "REVIEW_FAILED",
+  "READY_FOR_QA",
+  "ORCHESTRATION_INTERRUPTED",
 ] as const;
 
 export type TaskEventType = (typeof TASK_EVENT_TYPES)[number];
@@ -137,6 +149,7 @@ export interface Task {
   readonly taskContract?: TaskContract;
   readonly analysis?: TaskAnalysisSummary;
   readonly analysisFailure?: TaskAnalysisFailure;
+  readonly executionFailure?: TaskExecutionFailure;
   readonly pause?: PauseInfo;
   readonly cancellation?: CancellationInfo;
   readonly originTaskId?: TaskId;

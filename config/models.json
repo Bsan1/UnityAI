@@ -37,7 +37,7 @@
     { "work": "FEASIBILITY", "taskStrength": "STRONG", "modelId": "codex-sol", "effort": "high" },
     { "work": "IMPLEMENTATION", "taskStrength": "STRONG", "modelId": "codex-sol", "effort": "high" },
     { "work": "QA_REASONING", "taskStrength": "STRONG", "modelId": "codex-sol", "effort": "high" },
-    { "work": "CROSS_REVIEW", "taskStrength": "ALL", "modelId": "claude-sonnet" }
+    { "work": "CROSS_REVIEW", "taskStrength": "ALL", "modelId": "claude-sonnet", "effort": "medium" }
   ],
   "fixWork": "SAME_AS_IMPLEMENTATION",
   "runtimeEscalation": false

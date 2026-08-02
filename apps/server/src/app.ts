@@ -8,7 +8,18 @@ import type { AIService } from "./aiService.js";
 import type { AnalysisService } from "./analysisService.js";
 import { ServerError } from "./errors.js";
 import type { GitSafetyService } from "./gitSafetyService.js";
+import type { ImplementationOrchestrator } from "./implementationOrchestrator.js";
+import type { ProjectRegistry } from "./projectRegistry.js";
+import type { SettingsStore } from "./settingsStore.js";
 import type { TaskService } from "./taskService.js";
+import type { WorkflowService } from "./workflowService.js";
+
+export interface M5ServerServices {
+  readonly projects: ProjectRegistry;
+  readonly settings: SettingsStore;
+  readonly workflow: WorkflowService;
+  readonly orchestrator: ImplementationOrchestrator;
+}
 
 const maximumBodyBytes = 1_048_576;
 
@@ -68,6 +79,7 @@ const handleTaskAction = async (
   id: string,
   action: string,
   analysisService: AnalysisService | undefined,
+  m5: M5ServerServices | undefined,
 ): Promise<boolean> => {
   if (request.method === "PATCH" && action === "draft") {
     const task = await service.editDraft(id, await readJsonBody(request));
@@ -81,6 +93,22 @@ const handleTaskAction = async (
     analysisService !== undefined
   ) {
     sendJson(response, 200, await analysisService.getAnalysis(id));
+    return true;
+  }
+
+  if (request.method === "GET" && action === "progress" && m5 !== undefined) {
+    sendJson(response, 200, { progress: await m5.workflow.getProgress(id) });
+    return true;
+  }
+
+  if (request.method === "GET" && action === "details" && m5 !== undefined) {
+    sendJson(response, 200, await m5.workflow.getDetails(id));
+    return true;
+  }
+
+  if (request.method === "GET" && action === "events" && m5 !== undefined) {
+    const progress = await m5.workflow.getProgress(id);
+    sendJson(response, 200, { events: progress.events });
     return true;
   }
 
@@ -155,6 +183,7 @@ const handleTaskAction = async (
       return true;
     }
     case "pause": {
+      m5?.orchestrator.abort(id);
       const task = await service.pause(id, await readJsonBody(request));
       sendJson(response, 200, { task });
       return true;
@@ -192,6 +221,7 @@ const handleTaskAction = async (
       return true;
     }
     case "cancel": {
+      m5?.orchestrator.abort(id);
       const task = await service.cancel(id, await readJsonBody(request));
       sendJson(response, 200, { task });
       return true;
@@ -202,6 +232,15 @@ const handleTaskAction = async (
         await readJsonBody(request),
       );
       sendJson(response, 201, result);
+      return true;
+    }
+    case "start-implementation": {
+      if (m5 === undefined) {
+        return false;
+      }
+      sendJson(response, 202, {
+        run: await m5.orchestrator.start(id),
+      });
       return true;
     }
     default:
@@ -321,6 +360,7 @@ const handleRequest = async (
   gitService: GitSafetyService,
   aiService: AIService | undefined,
   analysisService: AnalysisService | undefined,
+  m5: M5ServerServices | undefined,
 ): Promise<void> => {
   const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
   const path = requestUrl.pathname;
@@ -337,13 +377,64 @@ const handleRequest = async (
     return;
   }
 
+  if (path === "/settings" && m5 !== undefined) {
+    if (request.method === "GET") {
+      sendJson(response, 200, { settings: m5.workflow.getSettings() });
+      return;
+    }
+    if (request.method === "PATCH") {
+      sendJson(response, 200, {
+        settings: await m5.workflow.updateSettings(await readJsonBody(request)),
+      });
+      return;
+    }
+  }
+
+  if (path === "/projects" && m5 !== undefined) {
+    if (request.method === "GET") {
+      sendJson(response, 200, { projects: m5.projects.list() });
+      return;
+    }
+    if (request.method === "POST") {
+      sendJson(response, 201, {
+        project: await m5.projects.create(await readJsonBody(request)),
+      });
+      return;
+    }
+  }
+
+  const projectRoute = /^\/projects\/(PROJECT-\d{4,})$/.exec(path);
+  if (projectRoute !== null && m5 !== undefined) {
+    const projectId = projectRoute[1];
+    if (projectId !== undefined && request.method === "GET") {
+      sendJson(response, 200, { project: m5.projects.get(projectId) });
+      return;
+    }
+    if (projectId !== undefined && request.method === "PATCH") {
+      sendJson(response, 200, {
+        project: await m5.projects.update(projectId, await readJsonBody(request)),
+      });
+      return;
+    }
+    if (projectId !== undefined && request.method === "DELETE") {
+      sendJson(response, 200, {
+        project: await m5.projects.remove(projectId),
+        removedRegistryOnly: true,
+      });
+      return;
+    }
+  }
+
   if (path === "/tasks") {
     if (request.method === "GET") {
       sendJson(response, 200, { tasks: await service.list() });
       return;
     }
     if (request.method === "POST") {
-      const task = await service.create(await readJsonBody(request));
+      const body = await readJsonBody(request);
+      const task = m5 === undefined
+        ? await service.create(body)
+        : await m5.workflow.createTask(body);
       sendJson(response, 201, { task });
       return;
     }
@@ -378,6 +469,7 @@ const handleRequest = async (
         id,
         action,
         analysisService,
+        m5,
       ))
     ) {
       return;
@@ -419,6 +511,7 @@ export const createUnityAiServer = (
   gitService: GitSafetyService,
   aiService?: AIService,
   analysisService?: AnalysisService,
+  m5?: M5ServerServices,
 ): Server =>
   createServer((request, response) => {
     void handleRequest(
@@ -428,6 +521,7 @@ export const createUnityAiServer = (
       gitService,
       aiService,
       analysisService,
+      m5,
     ).catch(
       (error: unknown) => {
         handleError(response, error);

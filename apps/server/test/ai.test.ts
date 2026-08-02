@@ -31,7 +31,11 @@ import type {
 } from "../src/aiProvider.js";
 import { AIService } from "../src/aiService.js";
 import { ClaudeProvider, buildClaudeCommand } from "../src/claudeProvider.js";
-import { CodexProvider, buildCodexCommand } from "../src/codexProvider.js";
+import {
+  CodexProvider,
+  buildCodexCommand,
+  codexChildEnvironment,
+} from "../src/codexProvider.js";
 import { ExecutionArtifactStore } from "../src/executionArtifactStore.js";
 import { createUnityAiServer } from "../src/app.js";
 import { ModelRegistry } from "../src/modelRegistry.js";
@@ -239,7 +243,7 @@ const executeBody = (workingDirectory: string, modelId: string) => ({
 test("repository agent, provider, model, and routing configuration load independently", async () => {
   const workspaceRoot = process.cwd();
   const agents = await AgentRegistry.load(join(workspaceRoot, "agents"));
-  assert.equal(agents.list().length, 4);
+  assert.equal(agents.list().length, 6);
   assert.equal(agents.get("m3-readonly-json").permission, "READ_ONLY");
   assert.equal(
     agents.get("m3-worktree-writer").permission,
@@ -247,6 +251,8 @@ test("repository agent, provider, model, and routing configuration load independ
   );
   assert.equal(agents.get("task-interpreter").permission, "READ_ONLY");
   assert.equal(agents.get("feasibility").permission, "READ_ONLY");
+  assert.equal(agents.get("implementation").permission, "WORKTREE_WRITE");
+  assert.equal(agents.get("review").permission, "READ_ONLY");
 
   const models = await loadModelConfiguration(
     join(workspaceRoot, "config", "models.json"),
@@ -581,6 +587,7 @@ test("Codex and Claude command builders isolate provider flags and prompt stdin"
     { executable: "codex-native", argumentPrefix: [] },
     { ...baseRequest, model: codexModel },
     { finalOutputPath: "final.json", schemaPath: "schema.json" },
+    "elevated",
   );
   assert.equal(codex.executable, "codex-native");
   assert.equal(codex.input, "prompt stays on stdin");
@@ -595,6 +602,14 @@ test("Codex and Claude command builders isolate provider flags and prompt stdin"
   assert.ok(
     codex.arguments.includes('model_reasoning_effort="medium"'),
   );
+  if (process.platform === "win32") {
+    assert.ok(codex.arguments.includes('windows.sandbox="elevated"'));
+  }
+  assert.deepEqual(codexChildEnvironment, {
+    CODEX_INTERNAL_ORIGINATOR_OVERRIDE: undefined,
+    CODEX_PERMISSION_PROFILE: undefined,
+    CODEX_THREAD_ID: undefined,
+  });
 
   const claude = buildClaudeCommand(
     { executable: "claude-native", argumentPrefix: [] },

@@ -82,3 +82,9 @@ Codex and Claude use their installed non-interactive CLIs through provider-local
 **Decision:** A normal first M4 analysis uses exactly two AI calls: Task Interpreter, then Feasibility. Preliminary strength is deterministic code used only to select the configured feasibility route. Final strength, the immutable proposed routing snapshot, and the Task Contract are also deterministic application code; there is no third contract/summarization call and no failure-based model escalation.
 
 A normal blocked-task recheck reuses a valid persisted interpretation and invokes only Feasibility against the current external target. Interpretation is rerun only when its persisted result is missing or invalid. Analysis is read-only, accepts the target's current dirty state without cleaning it, and never prepares an implementation worktree.
+
+## D-016: M5 stops before QA and Git finalization
+
+**Decision:** Approved implementation begins only after an explicit user start. One in-process orchestration run owns the task, prepares the existing M2 environment, runs the approved Implementation route inside the verified managed worktree, and records an internal implementation checkpoint. Cross Review runs only when the task's binary setting is on, uses its approved route read-only, and never applies fixes.
+
+The concrete terminal M5 state is `READY_FOR_QA`. It means implementation and optional review finished; it is not QA success, task completion, or permission to finalize, merge, or push Git history. Provider failure, cancellation, or restart interruption preserves the managed worktree and never escalates the model.

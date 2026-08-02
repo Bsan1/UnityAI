@@ -9,6 +9,8 @@ import type {
   AgentDefinition,
   JsonObject,
   JsonValue,
+  ModelDefinition,
+  ModelPlan,
   ReasoningEffort,
 } from "@unityai/core";
 
@@ -232,8 +234,39 @@ export class AgentExecutor {
 
   async execute(value: unknown, signal?: AbortSignal): Promise<AIExecutionResult> {
     const input = parseInput(value, this.defaultTimeoutMs, signal);
-    const agent = this.agents.get(input.agentId);
     const model = this.models.get(input.modelId);
+    return this.executeResolved(input, model);
+  }
+
+  async executePlanned(
+    value: unknown,
+    plan: ModelPlan & { readonly effort: ReasoningEffort },
+    signal?: AbortSignal,
+  ): Promise<AIExecutionResult> {
+    const input = parseInput(value, this.defaultTimeoutMs, signal);
+    if (input.modelId !== plan.modelId || input.effort !== plan.effort) {
+      throw new AIExecutionError(
+        "INVALID_EXECUTION_REQUEST",
+        "Execution input must match the approved model plan.",
+        422,
+      );
+    }
+    const model: ModelDefinition = {
+      id: plan.modelId,
+      displayName: plan.modelId,
+      providerId: plan.providerId,
+      providerModelName: plan.providerModelName,
+      supportedReasoningEfforts: [plan.effort],
+      capabilities: { structuredOutput: true },
+    };
+    return this.executeResolved(input, model);
+  }
+
+  private async executeResolved(
+    input: AIExecutionInput,
+    model: ModelDefinition,
+  ): Promise<AIExecutionResult> {
+    const agent = this.agents.get(input.agentId);
     if (!model.supportedReasoningEfforts.includes(input.effort)) {
       throw new AIExecutionError(
         "UNSUPPORTED_REASONING_EFFORT",

@@ -320,11 +320,22 @@ const parseProvider = (
   if (typeof record.enabled !== "boolean") {
     return invalid(`${path}.enabled must be a boolean.`);
   }
+  const windowsSandbox = record.windowsSandbox;
+  if (
+    windowsSandbox !== undefined &&
+    windowsSandbox !== "elevated" &&
+    windowsSandbox !== "unelevated"
+  ) {
+    return invalid(
+      `${path}.windowsSandbox must be elevated or unelevated when provided.`,
+    );
+  }
   return {
     id: readIdentifier(record.id, `${path}.id`),
     displayName: readString(record.displayName, `${path}.displayName`),
     executable: readString(record.executable, `${path}.executable`),
     enabled: record.enabled,
+    ...(windowsSandbox === undefined ? {} : { windowsSandbox }),
   };
 };
 

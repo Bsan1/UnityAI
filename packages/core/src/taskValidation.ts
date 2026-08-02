@@ -12,6 +12,7 @@ import {
   TASK_STATES,
   TASK_STRENGTHS,
 } from "./taskTypes.js";
+import { parseTaskExecutionFailure } from "./orchestrationValidation.js";
 import type {
   CancellationInfo,
   CreateTaskInput,
@@ -43,6 +44,7 @@ const pausableStates = new Set<TaskState>([
   "READY_FOR_IMPLEMENTATION",
   "IMPLEMENTING",
   "REVIEWING",
+  "READY_FOR_QA",
   "TESTING",
   "FAILED",
   "FIXING",
@@ -52,6 +54,7 @@ const implementationStates = new Set<TaskState>([
   "READY_FOR_IMPLEMENTATION",
   "IMPLEMENTING",
   "REVIEWING",
+  "READY_FOR_QA",
   "TESTING",
   "FAILED",
   "FIXING",
@@ -646,10 +649,13 @@ const validateTaskInvariants = (task: Task): void => {
 
   const isAnalysisFailure =
     effectiveState === "FAILED" && task.analysisFailure !== undefined;
+  const isExecutionFailure =
+    effectiveState === "FAILED" && task.executionFailure !== undefined;
   if (
     effectiveState !== undefined &&
     implementationStates.has(effectiveState) &&
     !isAnalysisFailure &&
+    !isExecutionFailure &&
     task.taskContract?.approved !== true
   ) {
     invalid(
@@ -659,6 +665,16 @@ const validateTaskInvariants = (task: Task): void => {
 
   if (task.analysisFailure !== undefined && task.state !== "FAILED") {
     invalid("Only a failed task may retain an analysis failure.");
+  }
+  if (
+    task.executionFailure !== undefined &&
+    task.state !== "FAILED" &&
+    !(task.state === "PAUSED" && task.pause?.previousState === "FAILED")
+  ) {
+    invalid("Only a failed or interrupted paused task may retain an execution failure.");
+  }
+  if (task.analysisFailure !== undefined && task.executionFailure !== undefined) {
+    invalid("A task cannot retain analysis and execution failures together.");
   }
   if (task.analysis !== undefined) {
     if (task.analysis.finalStrength !== task.strength) {
@@ -717,6 +733,9 @@ export const parseTask = (value: unknown): Task => {
   const analysisFailure = hasOwn(record, "analysisFailure")
     ? parseTaskAnalysisFailure(record.analysisFailure)
     : undefined;
+  const executionFailure = hasOwn(record, "executionFailure")
+    ? parseTaskExecutionFailure(record.executionFailure)
+    : undefined;
   const pause = hasOwn(record, "pause")
     ? parsePauseInfo(record.pause)
     : undefined;
@@ -757,6 +776,7 @@ export const parseTask = (value: unknown): Task => {
     ...(taskContract === undefined ? {} : { taskContract }),
     ...(analysis === undefined ? {} : { analysis }),
     ...(analysisFailure === undefined ? {} : { analysisFailure }),
+    ...(executionFailure === undefined ? {} : { executionFailure }),
     ...(pause === undefined ? {} : { pause }),
     ...(cancellation === undefined ? {} : { cancellation }),
     ...(originTaskId === undefined ? {} : { originTaskId }),

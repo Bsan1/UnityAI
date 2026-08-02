@@ -51,8 +51,8 @@ When feasibility blocks a task, the eventual user actions are:
 - **QA2:** runtime interaction testing in Unity Play Mode.
 - **QA3:** player-like validation of the requested gameplay behavior.
 
-## Current M4 scope
+## Current M5 scope
 
-M1 establishes the task entity, state pipeline, schemas, history, and JSON persistence. M2 adds conservative inspection and isolated local Git task environments for external targets. M3 adds independently configured agents, model aliases, and Codex/Claude CLI providers behind a common explicit executor. M4 connects that executor to real read-only task interpretation and current-project feasibility analysis. Deterministic application code selects task strength, snapshots future model routing, and constructs an editable, evidence-oriented Task Contract for approval. Blocked recheck reuses a valid interpretation and inspects the current target again.
+M1 establishes the task entity, state pipeline, schemas, history, and JSON persistence. M2 adds conservative inspection and isolated local Git task environments for external targets. M3 adds independently configured agents, model aliases, and Codex/Claude CLI providers behind a common explicit executor. M4 connects that executor to real read-only task interpretation and current-project feasibility analysis. M5 adds a small project registry and browser UI, then coordinates approved implementation in the M2-managed worktree, an implementation checkpoint, and optional read-only Cross Review using the frozen routing snapshot.
 
-M4 stops at `READY_FOR_IMPLEMENTATION` after approval. It does not prepare a Git implementation worktree, modify the target, run an implementation/review/QA/fix workflow, install dependencies, connect to Unity, or provide the production task UI. See [ROADMAP.md](ROADMAP.md) for staged delivery.
+M5 stops at `READY_FOR_QA`. It does not execute QA, apply automatic fixes, finalize or merge Git history, push, install dependencies, or connect to Unity. `READY_FOR_QA` is not a claim that QA passed or the task is complete. See [ROADMAP.md](ROADMAP.md) for staged delivery.

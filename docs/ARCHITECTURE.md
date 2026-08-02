@@ -1,17 +1,17 @@
 # Architecture
 
-## Current M4 state
+## Current M5 state
 
-M3 remains a small npm workspace with four independently named workspaces:
+UnityAI remains a small npm workspace with four independently named workspaces:
 
 ```text
-apps/web       React + Vite connectivity page
-apps/server    Local HTTP server, task/Git/analysis stores, orchestration, AI infrastructure, and adapters
-packages/core  Pure task/Git/agent/model/analysis types, validation, and deterministic rules
+apps/web       React + Vite local project/task workflow
+apps/server    Local HTTP server, JSON stores, analysis/implementation orchestration, AI and Git adapters
+packages/core  Pure task/Git/agent/model/analysis/orchestration types, validation, and rules
 packages/shared Shared HTTP contract types
 ```
 
-The browser still provides only the M0 connectivity page. During development, Vite proxies `/health` to the local server. The server uses Node's built-in HTTP module and exposes direct task commands. No backend framework or database is present.
+The browser provides project registration, task creation/history, analysis and blocked actions, Task Contract editing/approval, implementation start, polling progress, and implementation/review results. Vite proxies local API paths to the server. The server still uses Node's built-in HTTP module; no backend framework or database is present.
 
 `packages/core` owns the `Task` entity, state rules/actions, feasibility and Task Contract schemas, pure Git environment metadata, agent definitions, model aliases, reasoning effort, and declarative routing schemas. M4 adds pure interpretation/feasibility schemas, preliminary and final strength classifiers, routing snapshot construction, and the deterministic Task Contract builder. It has no filesystem, child-process, or concrete Git/provider command dependency. Agent definitions contain behavior and access metadata but no model or provider invocation. Task JSON remains the task source of truth; event history is an audit aid, not event sourcing.
 
@@ -38,7 +38,7 @@ ModelDefinition -> stable alias, provider ID, provider model name, supported eff
 AIProvider      -> local external-system invocation
 ```
 
-`agents/*.json` contains only two small development probes. `config/models.json` contains replaceable model aliases and the documented routing table; `config/providers.json` contains CLI names, timeout, and log bounds. Routing records are validated and exposed but are not executed. `AgentExecutor` requires the caller to provide agent ID, model ID, effort, input/context, and an existing working directory. It resolves registries, verifies the combination, canonicalizes the working directory, assembles the provider-neutral request, invokes the provider, validates structured output with JSON Schema, and stores the normalized run.
+`agents/*.json` contains the production Interpreter, Feasibility, Implementation, and Review definitions plus two small development probes. `config/models.json` contains replaceable model aliases and the documented routing table; `config/providers.json` contains CLI names, timeout, log bounds, and the native Windows Codex sandbox selection. `AgentExecutor` supports ordinary configured model resolution and exact execution from a persisted approved plan. It canonicalizes the working directory, assembles the provider-neutral request, invokes the provider, validates structured output with JSON Schema, and stores the normalized run.
 
 The provider registry contains concrete Codex and Claude adapters. Both use a shared process runner with `shell: false`, executable/argument arrays, prompt stdin, bounded capture, timeout, AbortSignal cancellation, exit status, and spawn diagnostics. On Windows, startup resolves installed npm CLI wrappers to their native executable or safe Node entry point instead of passing prompts through `cmd.exe`. Provider-specific flags remain inside their adapter.
 
@@ -87,11 +87,37 @@ runtime/tasks/TASK-0001/analysis/failure.json  (only on technical failure)
 
 Interpretation and feasibility records retain their global M3 `RUN-<UUID>` references; provider stdout/stderr remain only in bounded global execution artifacts. Analysis JSON is validated on read and written by temporary-file rename. One in-process task guard rejects simultaneous analysis mutation. A normal blocked recheck reuses valid interpretation, clears stale proposed planning, reruns Feasibility once against the current target, and rebuilds strength/routing/contract. Missing or invalid interpretation is the only reason recheck invokes Interpreter again.
 
-This current structure stops at contract approval and `READY_FOR_IMPLEMENTATION`. It contains no Git preparation triggered by approval, implementation/review/QA/fix execution, cross-review orchestration, dependency installation, Unity connection, automatic merge/push, or production task UI.
+M5 adds an explicit post-approval orchestration boundary:
+
+```text
+READY_FOR_IMPLEMENTATION
+  -> prepare verified M2 branch/worktree
+  -> IMPLEMENTING (approved route, WORKTREE_WRITE)
+  -> implementation checkpoint
+  -> REVIEWING when Cross Review is ON (approved route, READ_ONLY)
+  -> READY_FOR_QA
+```
+
+`ProjectRegistry` stores canonical external Git roots without deep Unity validation. `SettingsStore` persists only Cross Review and Automatic Fixes defaults; each new task copies them. `ImplementationOrchestrator` uses a per-task in-process guard and background `AbortController`, coordinates existing M1-M4 services, persists phase records, and never puts workflow logic in route handlers. It verifies the M2 write owner and managed path before launching Implementation, verifies real Git changes and unchanged task-branch history before checkpointing, and fingerprints the worktree before/after Review to enforce read-only behavior.
+
+The approved per-task routing snapshot is authoritative. Implementation and Review are executed with its provider model name and effort even if current global configuration changes; there is no failure escalation. Provider failure, cancellation, or restart interruption is stored as a technical phase failure while preserving the worktree. Review findings are retained as QA focus and do not trigger a fix loop.
+
+M5 data extends the runtime layout without duplicating M3 logs:
+
+```text
+runtime/projects.json
+runtime/settings.json
+runtime/tasks/TASK-0001/implementation/result.json
+runtime/tasks/TASK-0001/review/result.json
+runtime/tasks/TASK-0001/orchestration/failure.json
+runtime/tasks/TASK-0001/orchestration/git-status.json
+```
+
+The browser polls normalized progress/events; no chat transcript, chain-of-thought, WebSocket, queue, or distributed worker exists. `READY_FOR_QA` means implementation plus optional review completed. It is not `COMPLETED`, does not represent QA evidence, and does not finalize, merge, or push Git history.
 
 ## Planned architecture
 
-The following boundaries guide later milestones. Only the M0-M4 portions described above are implemented.
+The following boundaries guide later milestones. Only the M0-M5 portions described above are implemented.
 
 ### Local application boundary
 
@@ -99,7 +125,7 @@ UnityAI runs as its own local application. A selected Unity game is an external 
 
 ### Web application
 
-The React application will eventually present project selection, task drafting, strength selection, contract approval, blocked-task actions, progress, QA evidence, and results. It sends commands over ordinary HTTP. Server-sent events may later deliver progress updates if needed.
+The React application presents project selection, task drafting, contract approval, blocked-task actions, implementation progress, and pre-QA results. It sends commands over ordinary HTTP and polls progress. M6+ may extend it with Unity and QA evidence without changing the local application boundary.
 
 ### Local server
 

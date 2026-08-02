@@ -35,10 +35,20 @@ const sandboxFor = (
 ): "read-only" | "workspace-write" =>
   request.agent.permission === "READ_ONLY" ? "read-only" : "workspace-write";
 
+// UnityAI launches an independent Codex CLI execution. Desktop-host control
+// variables describe the parent Codex task and can otherwise override the
+// explicitly selected sandbox/permission context in the child process.
+export const codexChildEnvironment = {
+  CODEX_INTERNAL_ORIGINATOR_OVERRIDE: undefined,
+  CODEX_PERMISSION_PROFILE: undefined,
+  CODEX_THREAD_ID: undefined,
+} as const;
+
 export const buildCodexCommand = (
   launch: ProviderLaunch,
   request: ProviderExecutionRequest,
   files: CodexCommandFiles,
+  windowsSandbox?: "elevated" | "unelevated",
 ): ProviderCommand => ({
   executable: launch.executable,
   arguments: [
@@ -49,6 +59,9 @@ export const buildCodexCommand = (
     "--color",
     "never",
     "--ignore-user-config",
+    ...(process.platform === "win32" && windowsSandbox !== undefined
+      ? ["-c", `windows.sandbox="${windowsSandbox}"`]
+      : []),
     "--model",
     request.model.providerModelName,
     "-c",
@@ -225,11 +238,12 @@ export class CodexProvider implements AIProvider {
       const command = buildCodexCommand(this.launch, request, {
         finalOutputPath,
         ...(schemaPath === undefined ? {} : { schemaPath }),
-      });
+      }, this.configuration.windowsSandbox);
       const processResult = await this.runner.run({
         executable: command.executable,
         arguments: command.arguments,
         workingDirectory: request.workingDirectory,
+        environment: codexChildEnvironment,
         input: command.input,
         timeoutMs: request.timeoutMs,
         ...(request.signal === undefined ? {} : { signal: request.signal }),

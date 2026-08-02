@@ -85,6 +85,7 @@ export interface ProviderConfiguration {
   readonly displayName: string;
   readonly executable: string;
   readonly enabled: boolean;
+  readonly windowsSandbox?: "elevated" | "unelevated";
 }
 
 export interface AIProviderConfiguration {

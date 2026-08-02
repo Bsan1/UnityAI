@@ -6,7 +6,9 @@
 - Keep agent definitions separate from model/provider configuration.
 - Keep provider-specific CLI arguments inside provider adapters; never expose arbitrary process execution over HTTP.
 - Preserve M4's two-call analysis boundary: Interpreter, then Feasibility; strength, routing, and Task Contract construction are deterministic application code.
-- Keep target-project analysis read-only and never begin implementation before Task Contract approval.
+- Keep target-project analysis read-only and never begin implementation before Task Contract approval and an explicit implementation start.
+- Run writing agents only in verified M2-managed task worktrees; reviewers remain read-only.
+- M5 stops at `READY_FOR_QA`: do not run QA, automatic fixes, Git finalization, merge, or push.
 - Prefer simple, readable TypeScript and avoid speculative abstractions.
 - Do not modify unrelated files, discard user work, or rewrite Git history.
 - Preserve useful existing code and configuration.

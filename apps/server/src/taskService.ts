@@ -70,10 +70,18 @@ const readSuggestedRequest = (value: unknown): string | undefined => {
 
 export class TaskService {
   private readonly store: TaskStore;
-  private readonly settings: TaskSettings;
+  private settings: TaskSettings;
 
   constructor(store: TaskStore, settings: TaskSettings) {
     this.store = store;
+    this.settings = settings;
+  }
+
+  getSettings(): TaskSettings {
+    return this.settings;
+  }
+
+  setSettings(settings: TaskSettings): void {
     this.settings = settings;
   }
 

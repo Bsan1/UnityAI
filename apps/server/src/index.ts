@@ -11,8 +11,13 @@ import { loadTaskSettings } from "./config.js";
 import { GitCommandRunner } from "./gitCommandRunner.js";
 import { GitEnvironmentStore } from "./gitEnvironmentStore.js";
 import { GitSafetyService } from "./gitSafetyService.js";
+import { ImplementationOrchestrator } from "./implementationOrchestrator.js";
+import { OrchestrationArtifactStore } from "./orchestrationArtifactStore.js";
+import { ProjectRegistry } from "./projectRegistry.js";
+import { SettingsStore } from "./settingsStore.js";
 import { TaskService } from "./taskService.js";
 import { TaskStore } from "./taskStore.js";
+import { WorkflowService } from "./workflowService.js";
 
 const host = "127.0.0.1";
 const defaultPort = 3000;
@@ -44,7 +49,9 @@ const modelsPath =
 const providersPath =
   process.env.UNITYAI_PROVIDERS_CONFIG_PATH ??
   join(workspaceRoot, "config", "providers.json");
-const settings = await loadTaskSettings(configPath);
+const defaultSettings = await loadTaskSettings(configPath);
+const settingsStore = new SettingsStore(runtimeRoot);
+const settings = await settingsStore.initialize(defaultSettings);
 const store = new TaskStore(runtimeRoot);
 await store.initialize();
 const service = new TaskService(store, settings);
@@ -53,6 +60,8 @@ await gitEnvironmentStore.initialize();
 const gitRunner = new GitCommandRunner((operation) => {
   console.info(`[git] ${operation}`);
 });
+const projectRegistry = new ProjectRegistry(runtimeRoot, gitRunner);
+await projectRegistry.initialize();
 const gitService = new GitSafetyService(
   service,
   gitEnvironmentStore,
@@ -72,11 +81,36 @@ const analysisService = new AnalysisService(
   analysisArtifacts,
   aiService,
 );
+const orchestrationArtifacts = new OrchestrationArtifactStore(runtimeRoot);
+await orchestrationArtifacts.initialize();
+const implementationOrchestrator = new ImplementationOrchestrator(
+  service,
+  gitService,
+  aiService,
+  analysisArtifacts,
+  orchestrationArtifacts,
+);
+await implementationOrchestrator.recoverInterruptedRuns();
+const workflowService = new WorkflowService({
+  tasks: service,
+  projects: projectRegistry,
+  settings: settingsStore,
+  analysis: analysisArtifacts,
+  git: gitService,
+  orchestration: implementationOrchestrator,
+  orchestrationArtifacts,
+});
 const server = createUnityAiServer(
   service,
   gitService,
   aiService,
   analysisService,
+  {
+    projects: projectRegistry,
+    settings: settingsStore,
+    workflow: workflowService,
+    orchestrator: implementationOrchestrator,
+  },
 );
 const port = resolvePort(process.env.UNITYAI_PORT);
 

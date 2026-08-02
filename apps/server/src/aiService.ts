@@ -1,6 +1,8 @@
 import type {
   AgentDefinition,
+  ModelPlan,
   ModelConfiguration,
+  ReasoningEffort,
 } from "@unityai/core";
 
 import type {
@@ -44,5 +46,13 @@ export class AIService {
 
   execute(value: unknown, signal?: AbortSignal): Promise<AIExecutionResult> {
     return this.executor.execute(value, signal);
+  }
+
+  executePlanned(
+    value: unknown,
+    plan: ModelPlan & { readonly effort: ReasoningEffort },
+    signal?: AbortSignal,
+  ): Promise<AIExecutionResult> {
+    return this.executor.executePlanned(value, plan, signal);
   }
 }

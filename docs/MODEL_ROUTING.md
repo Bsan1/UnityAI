@@ -19,7 +19,7 @@ Model routing is replaceable configuration. Agent definitions remain stable when
 
 Fix work uses the exact implementation model and effort selected for the task.
 
-When Cross Review is `ON`, the initial intended reviewer is Claude Sonnet through the configured Claude provider. M3 supplies the provider capability only; the cross-review workflow remains future work. Cross Review defaults to `ON` and has no third mode.
+When Cross Review is `ON`, the reviewer is Claude Sonnet through the configured Claude provider at Medium effort. Cross Review defaults to `ON` and has no third mode.
 
 ## Configuration rule
 
@@ -27,4 +27,4 @@ These values now live in `config/models.json` as model aliases plus declarative 
 
 M4 now consumes these routing records. The Interpreter always uses its `ALL` route. Deterministic preliminary strength selects exactly one configured Feasibility model/effort. After feasibility, deterministic final strength produces a per-task execution snapshot for Implementation, QA, Fix, and optional Cross Review. Fix is copied exactly from Implementation. Cross Review is present only when the task's persisted boolean is `true`.
 
-The snapshot is planning data only; M4 does not execute those future phases. A blocked recheck may replace the unapproved proposed snapshot. Approval persists the task's snapshot, so later global configuration changes do not silently rewrite the approved plan. There is still no runtime escalation, automatic cost policy, or model selection outside these explicit records.
+M4 creates the snapshot as planning data. A blocked recheck may replace an unapproved proposed snapshot, while approval freezes it. M5 executes only the approved Implementation and optional Review entries; it does not re-resolve them from current global configuration. QA and Fix remain planned only. There is still no runtime escalation, automatic cost policy, or model selection outside these explicit records.

@@ -14,5 +14,8 @@
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@unityai/core": "0.1.0"
   }
 }

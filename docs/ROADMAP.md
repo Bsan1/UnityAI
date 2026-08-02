@@ -1,6 +1,6 @@
 # Roadmap
 
-**M4 - Analysis, Feasibility and Task Contract Pipeline is complete. M5 - Basic User Interface and End-to-End Orchestrator Flow is next.** Milestones describe bounded increments; completing one does not authorize implementation of the next.
+**M5 - Basic User Interface and End-to-End Orchestrator Flow is complete. M6 - Unity Project Adapter and Unity Bridge is next.** Milestones describe bounded increments; completing one does not authorize implementation of the next.
 
 ## M0 - Foundation (completed)
 
@@ -52,15 +52,15 @@
 
 **Completion criteria:** First analysis runs Interpreter then Feasibility without a contract-generator call; current target evidence and missing architecture determine `WAITING_FOR_APPROVAL` or `BLOCKED`; deterministic strength/routing/contract artifacts persist and reload; approval alone unlocks implementation readiness; recheck reads current state while reusing valid interpretation; technical failures remain failures; read-only and concurrency invariants are tested.
 
-## M5 - Basic User Interface and End-to-End Orchestrator Flow
+## M5 - Basic User Interface and End-to-End Orchestrator Flow (completed)
 
 **Goal:** Provide a usable local interface for project selection through approved implementation and result review.
 
-**Major deliverables:** External project selection; task editor; strength and binary settings; contract review/approval; progress transport; orchestration of M1-M4 and Git safety; basic implementation-agent execution; result/diff view.
+**Major deliverables:** Persistent external Git project registry; binary default controls; task history/editor; contract and blocked-task views; polling progress/events; background approval-gated Implementation execution in the M2 worktree; implementation checkpoint; optional read-only Cross Review; persisted phase results; explicit `READY_FOR_QA` state and result view.
 
-**Explicit non-goals:** Unity-specific deep inspection, complete QA hierarchy, automatic fix loop, advanced visual design, authentication, and cloud deployment.
+**Explicit non-goals:** Unity-specific deep inspection or communication; QA execution; automatic or review-fix loops; Git finalization/merge/push; advanced visual design; authentication; database; and cloud deployment.
 
-**Completion criteria:** A user can select a Git-backed target, approve a contract, run one safe implementation task, inspect its result, and retain full control over finalization without Unity-specific automation.
+**Completion criteria:** A user can register/select a Git target, analyze and edit/approve a contract, run one implementation only in its managed worktree, checkpoint changes, optionally receive a read-only cross-model review, inspect progress/results, and stop at `READY_FOR_QA`; dirty originals and failures remain safe, no model escalates, and no history is finalized, merged, or pushed.
 
 ## M6 - Unity Project Adapter and Unity Bridge
 
