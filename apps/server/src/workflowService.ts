@@ -1,4 +1,4 @@
-import type { Task, TaskEvent } from "@unityai/core";
+import type { Task, TaskEvent, TaskQAArtifacts } from "@unityai/core";
 
 import type { AnalysisArtifactStore } from "./analysisArtifactStore.js";
 import { ServerError } from "./errors.js";
@@ -6,6 +6,7 @@ import type { GitSafetyService } from "./gitSafetyService.js";
 import type { ImplementationOrchestrator } from "./implementationOrchestrator.js";
 import type { OrchestrationArtifactStore } from "./orchestrationArtifactStore.js";
 import type { ProjectRecord, ProjectRegistry } from "./projectRegistry.js";
+import type { QAOrchestrator } from "./qaOrchestrator.js";
 import type { SettingsStore } from "./settingsStore.js";
 import type { TaskService } from "./taskService.js";
 
@@ -33,10 +34,14 @@ const step = (id: string, label: string, status: ProgressStepStatus): ProgressSt
 const hasEvent = (events: readonly TaskEvent[], type: TaskEvent["type"]): boolean =>
   events.some((entry) => entry.type === type);
 
-const progressSteps = (task: Task): readonly ProgressStep[] => {
+const progressSteps = (
+  task: Task,
+  qa?: TaskQAArtifacts,
+): readonly ProgressStep[] => {
   const failed = task.state === "FAILED";
   const implementationComplete = hasEvent(task.events, "IMPLEMENTATION_COMPLETED");
   const reviewComplete = hasEvent(task.events, "REVIEW_COMPLETED");
+  const latestQA = qa?.latestSession;
   const gitPrepared = hasEvent(task.events, "GIT_ENVIRONMENT_PREPARED");
   const interpretationComplete = task.analysis !== undefined || hasEvent(task.events, "ANALYSIS_COMPLETED");
   const feasibilityComplete = task.feasibility !== undefined;
@@ -88,7 +93,45 @@ const progressSteps = (task: Task): readonly ProgressStep[] => {
     step(
       "ready-for-qa",
       "Ready for QA",
-      task.state === "READY_FOR_QA" ? "COMPLETE" : "PENDING",
+      task.state === "READY_FOR_QA"
+        ? "CURRENT"
+        : latestQA !== undefined || task.state === "READY_FOR_GAMEPLAY_QA" || task.state === "COMPLETED"
+          ? "COMPLETE"
+          : "PENDING",
+    ),
+    step(
+      "qa",
+      "Static / Structural / Runtime QA",
+      task.state === "TESTING"
+        ? "CURRENT"
+        : latestQA?.status === "PASS" || latestQA?.status === "INCOMPLETE_GAMEPLAY"
+          ? "COMPLETE"
+          : latestQA?.status === "FAIL" || latestQA?.status === "TECHNICAL_FAILURE"
+            ? "FAILED"
+            : "PENDING",
+    ),
+    step(
+      "fix",
+      "Automatic Fix / Full Retest",
+      task.state === "FIXING"
+        ? "CURRENT"
+        : (qa?.fixes.length ?? 0) > 0
+          ? "COMPLETE"
+          : "PENDING",
+    ),
+    step(
+      "gameplay-qa",
+      "Player Gameplay QA",
+      task.state === "READY_FOR_GAMEPLAY_QA"
+        ? "CURRENT"
+        : task.state === "COMPLETED"
+          ? "SKIPPED"
+          : "PENDING",
+    ),
+    step(
+      "finalized",
+      "Final Task Commit",
+      task.state === "COMPLETED" ? "COMPLETE" : "PENDING",
     ),
   ];
 };
@@ -101,6 +144,7 @@ export class WorkflowService {
   private readonly git: GitSafetyService;
   private readonly orchestration: ImplementationOrchestrator;
   private readonly orchestrationArtifacts: OrchestrationArtifactStore;
+  private readonly qa: QAOrchestrator | undefined;
 
   constructor(input: {
     readonly tasks: TaskService;
@@ -110,6 +154,7 @@ export class WorkflowService {
     readonly git: GitSafetyService;
     readonly orchestration: ImplementationOrchestrator;
     readonly orchestrationArtifacts: OrchestrationArtifactStore;
+    readonly qa?: QAOrchestrator;
   }) {
     this.tasks = input.tasks;
     this.projects = input.projects;
@@ -118,6 +163,7 @@ export class WorkflowService {
     this.git = input.git;
     this.orchestration = input.orchestration;
     this.orchestrationArtifacts = input.orchestrationArtifacts;
+    this.qa = input.qa;
   }
 
   async createTask(value: unknown): Promise<Task> {
@@ -151,14 +197,30 @@ export class WorkflowService {
 
   async getProgress(id: string) {
     const task = await this.tasks.get(id);
-    const artifacts = await this.orchestrationArtifacts.get(task.id);
+    const [artifacts, qa] = await Promise.all([
+      this.orchestrationArtifacts.get(task.id),
+      this.qa?.get(task.id) ?? Promise.resolve(undefined),
+    ]);
+    const latest = qa?.latestSession;
     return {
       taskId: task.id,
       state: task.state,
-      active: this.orchestration.isActive(task.id),
-      steps: progressSteps(task),
+      active: this.orchestration.isActive(task.id) || (this.qa?.isActive(task.id) ?? false),
+      steps: progressSteps(task, qa),
       events: task.events,
       failure: artifacts.failure,
+      ...(qa?.latestFailure === undefined ? {} : { qaFailure: qa.latestFailure }),
+      ...(latest === undefined
+        ? {}
+        : {
+            qaCycle: latest.cycleNumber,
+            qaSummary: {
+              passed: latest.summary.passed,
+              failed: latest.summary.failed,
+              blocked: latest.summary.blocked,
+              gameplayPending: latest.summary.gameplayPending,
+            },
+          }),
       reviewFindingCount: artifacts.review?.findings.length ?? 0,
     };
   }
@@ -166,10 +228,15 @@ export class WorkflowService {
   async getDetails(id: string) {
     const task = await this.tasks.get(id);
     const project = this.projects.findByPath(task.targetProjectPath);
-    const [analysis, orchestration, environment] = await Promise.all([
+    const [analysis, orchestration, environment, qa] = await Promise.all([
       this.analysis.get(task.id),
       this.orchestrationArtifacts.get(task.id),
       this.git.getEnvironment(task.id),
+      this.qa?.get(task.id) ?? Promise.resolve<TaskQAArtifacts>({
+        sessions: [],
+        reports: [],
+        fixes: [],
+      }),
     ]);
     let gitStatus;
     let gitDiff;
@@ -194,13 +261,26 @@ export class WorkflowService {
         diff: gitDiff,
       },
       orchestration,
+      qa,
       progress: {
         taskId: task.id,
         state: task.state,
-        active: this.orchestration.isActive(task.id),
-        steps: progressSteps(task),
+        active: this.orchestration.isActive(task.id) || (this.qa?.isActive(task.id) ?? false),
+        steps: progressSteps(task, qa),
         events: task.events,
         failure: orchestration.failure,
+        ...(qa.latestFailure === undefined ? {} : { qaFailure: qa.latestFailure }),
+        ...(qa.latestSession === undefined
+          ? {}
+          : {
+              qaCycle: qa.latestSession.cycleNumber,
+              qaSummary: {
+                passed: qa.latestSession.summary.passed,
+                failed: qa.latestSession.summary.failed,
+                blocked: qa.latestSession.summary.blocked,
+                gameplayPending: qa.latestSession.summary.gameplayPending,
+              },
+            }),
         reviewFindingCount: orchestration.review?.findings.length ?? 0,
       },
       blockedActions:

@@ -20,6 +20,8 @@ export type {
   UnityComponentSnapshot,
   UnityConsoleEntry,
   UnityConsoleResult,
+  UnityCompilationMessage,
+  UnityCompilationResult,
   UnityEditorResolution,
   UnityEditorResolutionMethod,
   UnityEditorStatus,

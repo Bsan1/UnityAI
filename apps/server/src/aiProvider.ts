@@ -2,6 +2,7 @@ import type {
   AgentDefinition,
   JsonObject,
   JsonValue,
+  McpStdioServerConfiguration,
   ModelDefinition,
   ReasoningEffort,
 } from "@unityai/core";
@@ -37,6 +38,7 @@ export interface ProviderExecutionRequest {
   readonly expectedOutputSchema?: JsonObject;
   readonly timeoutMs: number;
   readonly signal?: AbortSignal;
+  readonly mcpServers?: readonly McpStdioServerConfiguration[];
 }
 
 export type ProviderExecutionStatus =
@@ -81,6 +83,10 @@ export interface AIExecutionInput {
   readonly context?: string;
   readonly timeoutMs?: number;
   readonly signal?: AbortSignal;
+}
+
+export interface PlannedExecutionOptions {
+  readonly mcpServers?: readonly McpStdioServerConfiguration[];
 }
 
 export interface AIExecutionDiagnostics {

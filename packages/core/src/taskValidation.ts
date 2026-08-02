@@ -46,6 +46,7 @@ const pausableStates = new Set<TaskState>([
   "REVIEWING",
   "READY_FOR_QA",
   "TESTING",
+  "READY_FOR_GAMEPLAY_QA",
   "FAILED",
   "FIXING",
 ]);
@@ -56,6 +57,7 @@ const implementationStates = new Set<TaskState>([
   "REVIEWING",
   "READY_FOR_QA",
   "TESTING",
+  "READY_FOR_GAMEPLAY_QA",
   "FAILED",
   "FIXING",
   "COMPLETED",

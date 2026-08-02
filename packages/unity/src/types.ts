@@ -1,5 +1,5 @@
 export const UNITY_BRIDGE_PROTOCOL_VERSION = 1 as const;
-export const UNITY_BRIDGE_VERSION = "0.1.0" as const;
+export const UNITY_BRIDGE_VERSION = "0.2.0" as const;
 export const UNITY_BRIDGE_PACKAGE_NAME = "com.unityai.editor-bridge" as const;
 
 export interface UnityPackageDependency {
@@ -68,6 +68,26 @@ export interface UnityEditorStatus {
   readonly isUpdating: boolean;
   readonly activeScene: string;
   readonly activePlatform: string;
+  readonly lastCompilation?: UnityCompilationResult;
+}
+
+export interface UnityCompilationMessage {
+  readonly severity: "error" | "warning";
+  readonly message: string;
+  readonly file: string;
+  readonly line: number;
+  readonly column: number;
+}
+
+export interface UnityCompilationResult {
+  readonly requestId: string;
+  readonly requestedAt: string;
+  readonly completed: boolean;
+  readonly completedAt: string;
+  readonly errorCount: number;
+  readonly warningCount: number;
+  readonly messagesTruncated: boolean;
+  readonly messages: readonly UnityCompilationMessage[];
 }
 
 export interface UnityConsoleEntry {

@@ -7,6 +7,8 @@ import type {
   TaskEvent,
   TaskExecutionFailure,
   TaskSettings,
+  TaskQAArtifacts,
+  QATechnicalFailure,
 } from "@unityai/core";
 import type {
   UnityEditorStatus,
@@ -36,6 +38,15 @@ export type {
   TaskExecutionFailure,
   TaskSettings,
   TaskState,
+  TaskQAArtifacts,
+  FixResult,
+  QAEvidence,
+  QAFinding,
+  QAPlannedTest,
+  QAReport,
+  QASession,
+  QATechnicalFailure,
+  QATestResult,
 } from "@unityai/core";
 
 export interface HealthResponse {
@@ -125,6 +136,14 @@ export interface TaskProgress {
   readonly steps: readonly ProgressStep[];
   readonly events: readonly TaskEvent[];
   readonly failure?: TaskExecutionFailure;
+  readonly qaFailure?: QATechnicalFailure;
+  readonly qaCycle?: number;
+  readonly qaSummary?: {
+    readonly passed: number;
+    readonly failed: number;
+    readonly blocked: number;
+    readonly gameplayPending: number;
+  };
   readonly reviewFindingCount: number;
 }
 
@@ -175,6 +194,7 @@ export interface TaskDetailsResponse {
     readonly gitSnapshot?: OrchestrationGitSnapshot;
     readonly failure?: TaskExecutionFailure;
   };
+  readonly qa: TaskQAArtifacts;
   readonly progress: TaskProgress;
   readonly blockedActions: readonly string[];
 }

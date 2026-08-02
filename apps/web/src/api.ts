@@ -6,6 +6,7 @@ import type {
   Task,
   TaskDetailsResponse,
   TaskProgress,
+  TaskQAArtifacts,
   UnityProjectInspectionResponse,
   UnityTaskStatusResponse,
 } from "@unityai/shared";
@@ -100,6 +101,12 @@ export const api = {
     request(`/tasks/${id}/unity/editor/wait-idle`, json("POST", {})),
   removeUnityBridge: (id: string) =>
     request<UnityTaskStatusResponse>(`/tasks/${id}/unity/bridge/remove`, json("POST")),
+  getTaskQA: async (id: string) =>
+    (await request<{ qa: TaskQAArtifacts }>(`/tasks/${id}/qa`)).qa,
+  startQA: (id: string) => request(`/tasks/${id}/qa/start`, json("POST")),
+  fixAndRetest: (id: string) =>
+    request(`/tasks/${id}/qa/fix-and-retest`, json("POST")),
+  cancelQA: (id: string) => request(`/tasks/${id}/qa/cancel`, json("POST")),
   prerequisiteDraft: async (id: string) =>
     (await request<{ prerequisiteDraft: Task }>(
       `/tasks/${id}/prerequisite-draft`,
@@ -126,6 +133,15 @@ export const userMessageForError = (error: unknown): string => {
   }
   if (error.code === "TASK_IMPLEMENTATION_IN_PROGRESS") {
     return "Implementation is already running for this task.";
+  }
+  if (error.code === "TASK_QA_IN_PROGRESS") {
+    return "QA or fixing is already running for this task.";
+  }
+  if (error.code === "QA_FIX_NOT_AVAILABLE") {
+    return "Fix & Retest is available only after a completed evidence-backed QA failure batch.";
+  }
+  if (error.code === "UNITY_TOOLING_IN_FINAL_DIFF") {
+    return "Temporary UnityAI bridge tooling remains in the task diff, so finalization was stopped safely.";
   }
   if (error.code === "NOT_A_UNITY_PROJECT") {
     return "The selected Git project does not have the required Unity project structure (Assets, Packages, ProjectSettings, and ProjectVersion.txt).";

@@ -1,6 +1,6 @@
 # Roadmap
 
-**M6 - Unity Project Adapter and Unity Bridge is complete. M7 - QA and Automatic Fix Loop is next.** Milestones describe bounded increments; completing one does not authorize implementation of the next.
+**M7 - QA and Automatic Fix Loop is complete. M8 - Player-Level Gameplay QA is next.** Milestones describe bounded increments; completing one does not authorize implementation of the next.
 
 ## M0 - Foundation (completed)
 
@@ -72,15 +72,15 @@
 
 **Completion criteria:** Valid/invalid projects and Editors resolve deterministically; bridge setup/removal can target only marker-verified M2 worktrees; original worktrees remain untouched; descriptors authenticate and cannot cross projects or use non-loopback hosts; fake transport/process/MCP coverage passes; the Editor package compiles and all commands, Play Mode transitions, and MCP ping/status succeed in one disposable live Unity project; temporary tooling is excluded from checkpoints and removed safely.
 
-## M7 - QA and Automatic Fix Loop
+## M7 - QA and Automatic Fix Loop (completed)
 
 **Goal:** Run complete available QA sessions, batch failures, and optionally perform controlled fixes and reruns.
 
-**Major deliverables:** QA0-QA2 planning/execution; evidence records; continue-when-reasonable behavior; batched failure reports; `ON`/`OFF` Automatic Fixes; localized fix eligibility; full-session rerun; final commit gating.
+**Major deliverables:** Explicit QA session/result/finding/evidence models; QA0 STATIC, QA1 STRUCTURAL, and QA2 RUNTIME execution; deterministic Git/Unity/compilation preflight; provider-neutral read-only QA Agent with Unity MCP; continue-when-reasonable behavior; one batched report per cycle; technical-failure separation; binary Automatic Fixes; exact Implementation-route Fix Agent; bridge-free fix checkpoints; full-session reruns; fixed three-fix safety bound; `READY_FOR_GAMEPLAY_QA`; temporary-tooling cleanup and M2 squash finalization gating; QA API/progress/result UI.
 
-**Explicit non-goals:** Broad QA3 player cognition, silent architectural changes, runtime model escalation, and unlimited retry loops.
+**Explicit non-goals:** QA3 player-input/gameplay execution; semantic/physical/virtual input; screenshots or visual evaluation; runtime probe framework; arbitrary C#/Unity/filesystem/shell capabilities; silent architectural changes; new review-fix loops; model escalation; unlimited retries; merge; push; and remote integration.
 
-**Completion criteria:** Multiple independent failures are collected in one run; fixes use the selected implementation model/effort; ambiguous or repeated failures return control; successful complete reruns can authorize a final local commit.
+**Completion criteria:** Every reasonably executable M7 test is attempted and evidence-normalized before one batch is produced; independent failures continue while prerequisite failures block only dependent tests; Fix receives the complete batch and exact approved Implementation route; every fix checkpoint excludes temporary Unity tooling and causes full fresh QA; automatic correction stops after three fixes; technical failures never trigger Fix/escalation; required GAMEPLAY remains pending without finalization; otherwise tooling removal and M2 squash produce exactly one local task commit before `COMPLETED`; original worktree, original branch, merge, and push remain untouched.
 
 ## M8 - Player-Level Gameplay QA
 

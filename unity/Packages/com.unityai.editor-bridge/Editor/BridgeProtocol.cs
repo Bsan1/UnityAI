@@ -8,7 +8,7 @@ namespace UnityAI.EditorBridge
     internal static class BridgeProtocol
     {
         internal const int ProtocolVersion = 1;
-        internal const string BridgeVersion = "0.1.0";
+        internal const string BridgeVersion = "0.2.0";
         internal const int MaximumRequestBytes = 262144;
         internal const int CommandTimeoutMilliseconds = 15000;
 
@@ -68,12 +68,37 @@ namespace UnityAI.EditorBridge
             public bool isUpdating;
             public string activeScene = string.Empty;
             public string activePlatform = string.Empty;
+            public CompilationResult lastCompilation;
         }
 
         [Serializable]
         internal sealed class RequestedResult
         {
             public bool requested;
+            public string requestId = string.Empty;
+        }
+
+        [Serializable]
+        internal sealed class CompilationMessage
+        {
+            public string severity = string.Empty;
+            public string message = string.Empty;
+            public string file = string.Empty;
+            public int line;
+            public int column;
+        }
+
+        [Serializable]
+        internal sealed class CompilationResult
+        {
+            public string requestId = string.Empty;
+            public string requestedAt = string.Empty;
+            public bool completed;
+            public string completedAt = string.Empty;
+            public int errorCount;
+            public int warningCount;
+            public bool messagesTruncated;
+            public CompilationMessage[] messages = Array.Empty<CompilationMessage>();
         }
 
         [Serializable]

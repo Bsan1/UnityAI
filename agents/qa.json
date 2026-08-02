@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "id": "qa",
+  "displayName": "QA Agent",
+  "role": "Verify an approved Task Contract with evidence using read-only project inspection and Unity MCP",
+  "instructions": "Treat the approved Task Contract and planned tests as authoritative. Work read-only in the supplied managed worktree. Use deterministic preflight evidence first, then the explicit Unity MCP tools for bounded structural and runtime observations. Attempt every supplied STATIC, STRUCTURAL, and RUNTIME test that can reasonably continue after an ordinary failure; do not stop at the first failure. Never modify source, scenes, assets, settings, dependencies, files, or Git state. Never fix defects. Never claim PASS without concrete evidence. Use BLOCKED only when a prerequisite failure makes a test impossible, and explain why. Set blockingReason to NONE for PASS/FAIL and to a concise reason for BLOCKED/NOT_RUN. Do not execute or claim GAMEPLAY tests; UnityAI handles those as pending for M8. Review findings are investigation focus, not automatic failures. Return one concise structured batch only after the available test session is complete, using stable finding IDs such as FAIL-001.",
+  "permission": "READ_ONLY",
+  "toolPolicy": "READ_ONLY_TOOLS",
+  "contextPolicy": {
+    "includeRepositoryInstructions": true,
+    "maximumInputCharacters": 500000
+  },
+  "expectedOutputSchema": {
+    "type": "object",
+    "properties": {
+      "summary": { "type": "string", "minLength": 1 },
+      "results": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "testId": { "type": "string", "minLength": 1 },
+            "category": { "type": "string", "enum": ["STATIC", "STRUCTURAL", "RUNTIME"] },
+            "status": { "type": "string", "enum": ["PASS", "FAIL", "BLOCKED", "NOT_RUN"] },
+            "summary": { "type": "string", "minLength": 1 },
+            "expected": { "type": "string", "minLength": 1 },
+            "observed": { "type": "string", "minLength": 1 },
+            "evidence": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "enum": ["COMPILER", "CONSOLE", "GIT_DIFF", "FILE", "SCENE", "HIERARCHY", "OBJECT", "EDITOR_STATE", "PLAY_MODE", "MCP", "REVIEW"] },
+                  "summary": { "type": "string", "minLength": 1 }
+                },
+                "required": ["kind", "summary"],
+                "additionalProperties": false
+              }
+            },
+            "likelyArea": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "blockingReason": { "type": "string", "minLength": 1 }
+          },
+          "required": ["testId", "category", "status", "summary", "expected", "observed", "evidence", "likelyArea", "blockingReason"],
+          "additionalProperties": false
+        }
+      },
+      "findings": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": { "type": "string", "minLength": 1 },
+            "severity": { "type": "string", "enum": ["info", "warning", "blocking"] },
+            "title": { "type": "string", "minLength": 1 },
+            "description": { "type": "string", "minLength": 1 },
+            "relatedAcceptanceCriteria": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "relatedTests": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "reproduction": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "expected": { "type": "string", "minLength": 1 },
+            "observed": { "type": "string", "minLength": 1 },
+            "evidence": {
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "kind": { "type": "string", "enum": ["COMPILER", "CONSOLE", "GIT_DIFF", "FILE", "SCENE", "HIERARCHY", "OBJECT", "EDITOR_STATE", "PLAY_MODE", "MCP", "REVIEW"] },
+                  "summary": { "type": "string", "minLength": 1 }
+                },
+                "required": ["kind", "summary"],
+                "additionalProperties": false
+              }
+            },
+            "suspectedArea": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "source": { "type": "string", "enum": ["STATIC", "STRUCTURAL", "RUNTIME", "REVIEW"] }
+          },
+          "required": ["id", "severity", "title", "description", "relatedAcceptanceCriteria", "relatedTests", "reproduction", "expected", "observed", "evidence", "suspectedArea", "source"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["summary", "results", "findings"],
+    "additionalProperties": false
+  }
+}

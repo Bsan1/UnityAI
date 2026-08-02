@@ -7,6 +7,17 @@ export type JsonValue =
   | { readonly [key: string]: JsonValue };
 export type JsonObject = { readonly [key: string]: JsonValue };
 
+export interface McpStdioServerConfiguration {
+  readonly id: string;
+  readonly transport: "stdio";
+  readonly command: string;
+  readonly arguments: readonly string[];
+  readonly environment?: Readonly<Record<string, string>>;
+  readonly allowedTools: readonly string[];
+  readonly startupTimeoutMs?: number;
+  readonly toolTimeoutMs?: number;
+}
+
 export const AGENT_PERMISSIONS = ["READ_ONLY", "WORKTREE_WRITE"] as const;
 export type AgentPermission = (typeof AGENT_PERMISSIONS)[number];
 

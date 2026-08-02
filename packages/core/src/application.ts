@@ -1,5 +1,5 @@
 export const applicationInfo = Object.freeze({
   name: "UnityAI",
   version: "0.1.0",
-  milestone: "M6",
+  milestone: "M7",
 } as const);

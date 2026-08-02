@@ -47,6 +47,9 @@ input:focus, select:focus, textarea:focus { border-color: #73cfee; box-shadow: 0
 .eyebrow { margin: 0; color: #75cfee; font-size: .72rem; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; }
 .state-badge, .tag, .strength, .live-pill { display: inline-flex; align-items: center; padding: .35rem .55rem; border: 1px solid #3a4a60; border-radius: 999px; color: #b9c7d8; background: #17202c; font-size: .7rem; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .state-ready_for_qa { border-color: #3e8b65; color: #7ae2a8; background: #183126; }
+.state-ready_for_gameplay_qa { border-color: #8d7339; color: #f1cc77; background: #2b2518; }
+.state-testing, .state-fixing { border-color: #3d839c; color: #a9e6f7; background: #142631; }
+.state-completed { border-color: #3e8b65; color: #7ae2a8; background: #183126; }
 .state-blocked, .state-failed { border-color: #84533d; color: #f6ae7f; background: #2d211c; }
 .error-banner { display: grid; grid-template-columns: auto 1fr auto; gap: .7rem; align-items: center; margin-bottom: 1rem; padding: .9rem 1rem; border: 1px solid #743e42; border-radius: .65rem; color: #ffd1d1; background: #2a181b; }
 .error-banner button { border: 0; color: #ffb6b6; background: transparent; }
@@ -128,6 +131,15 @@ code { color: #85d8f3; }
 .finding span { color: #8290a2; font-size: .68rem; text-transform: uppercase; }
 .finding p { margin: 0; }
 .finding small { color: #728197; }
+.finding ul { margin: .2rem 0 0; }
+.qa-setting-line { display: grid; gap: .25rem; margin: 1rem 0; padding: .8rem; border: 1px solid #315742; border-radius: .55rem; background: #14271d; }
+.qa-setting-line small { color: #789787; }
+.qa-counts div { border-color: #55404a; background: #21191d; }
+.qa-test-list { display: grid; gap: .55rem; margin: 1rem 0; }
+.qa-test-row { display: grid; grid-template-columns: minmax(7rem, .7fr) minmax(12rem, 2fr) auto; gap: .7rem; align-items: center; padding: .7rem .85rem; border: 1px solid #314052; border-radius: .55rem; background: #111923; }
+.qa-test-row span, .qa-test-row p { margin: 0; }
+.qa-test-row small { display: block; color: #718197; }
+.qa-test-row em { color: #9fb0c4; font-style: normal; font-weight: 750; }
 .severity-blocking { border-color: #e26b72; }
 .severity-warning { border-color: #d7a046; }
 .severity-info { border-color: #4aa5c7; }
@@ -157,4 +169,5 @@ code { color: #85d8f3; }
   .pipeline, .result-grid { grid-template-columns: 1fr; }
   .debug-details dl { grid-template-columns: 1fr; }
   .error-banner { grid-template-columns: 1fr; }
+  .qa-test-row { grid-template-columns: 1fr; }
 }

@@ -69,6 +69,7 @@ export type {
   ModelRoutingEntry,
   ModelRoutingStrength,
   ModelRoutingWork,
+  McpStdioServerConfiguration,
   ProviderConfiguration,
   ReasoningEffort,
 } from "./aiTypes.js";
@@ -79,6 +80,64 @@ export {
   parseReasoningEffort,
 } from "./aiValidation.js";
 export { TaskDomainError } from "./errors.js";
+export {
+  beginTaskFix,
+  beginTaskQA,
+  completeTaskFixAndRestartQA,
+  completeTaskQAAndFinalize,
+  completeTaskQAForGameplay,
+  failTaskQA,
+  failTaskFix,
+  markPausedQAInterrupted,
+  recordTaskQAProgress,
+  recordTaskQAFailure,
+} from "./qaDomain.js";
+export {
+  QA_EVIDENCE_KINDS,
+  QA_EXECUTABLE_CATEGORIES,
+  QA_FINDING_SEVERITIES,
+  QA_FINDING_SOURCES,
+  QA_SESSION_STATUSES,
+  QA_TECHNICAL_PHASES,
+  QA_TEST_STATUSES,
+} from "./qaTypes.js";
+export type {
+  FixAgentOutput,
+  FixResult,
+  QAAgentFinding,
+  QAAgentOutput,
+  QAAgentTestResult,
+  QAEvidence,
+  QAEvidenceInput,
+  QAEvidenceKind,
+  QAExecutableCategory,
+  QAFinding,
+  QAFindingSeverity,
+  QAFindingSource,
+  QAPlannedTest,
+  QAReport,
+  QASession,
+  QASessionStatus,
+  QASessionSummary,
+  QATechnicalFailure,
+  QATechnicalPhase,
+  QATestResult,
+  QATestStatus,
+  QAUnityEnvironmentSummary,
+  TaskQAArtifacts,
+} from "./qaTypes.js";
+export {
+  parseFixAgentOutput,
+  parseFixResult,
+  parseQAAgentOutput,
+  parseQAAgentTestResult,
+  parseQAEvidence,
+  parseQAEvidenceInput,
+  parseQAPlannedTest,
+  parseQAReport,
+  parseQASession,
+  parseQATechnicalFailure,
+} from "./qaValidation.js";
 export {
   beginTaskImplementation,
   completeTaskImplementation,

@@ -5,6 +5,7 @@ import { join } from "node:path";
 import type {
   AgentDefinition,
   ModelDefinition,
+  McpStdioServerConfiguration,
   ReasoningEffort,
 } from "@unityai/core";
 
@@ -28,6 +29,7 @@ export interface ExecutionArtifactRequest {
   readonly context?: string;
   readonly timeoutMs: number;
   readonly startedAt: string;
+  readonly mcpServers?: readonly McpStdioServerConfiguration[];
 }
 
 const sensitiveKeyPattern =
@@ -143,6 +145,11 @@ export class ExecutionArtifactStore {
       inputCharacters: request.input.length,
       contextCharacters: request.context?.length ?? 0,
       inputDigest: digestInput(request.input, request.context),
+      mcpServers: (request.mcpServers ?? []).map((server) => ({
+        id: server.id,
+        transport: server.transport,
+        allowedTools: server.allowedTools,
+      })),
     };
     await this.writeJson(handle.directory, "request.json", requestRecord);
     return handle;

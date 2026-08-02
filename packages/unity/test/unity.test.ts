@@ -185,7 +185,7 @@ const startFakeBridge = async (options: {
       const results: Record<string, unknown> = {
         "bridge.ping": {
           protocolVersion: 1,
-          bridgeVersion: "0.1.0",
+          bridgeVersion: "0.2.0",
           unityVersion: "6000.3.11f1",
           projectPath: root,
           processId: 1234,
@@ -197,8 +197,18 @@ const startFakeBridge = async (options: {
           isUpdating: false,
           activeScene: "SampleScene",
           activePlatform: "StandaloneWindows64",
+          lastCompilation: {
+            requestId: "compile-1",
+            requestedAt: new Date().toISOString(),
+            completed: true,
+            completedAt: new Date().toISOString(),
+            errorCount: 0,
+            warningCount: 0,
+            messagesTruncated: false,
+            messages: [],
+          },
         },
-        "editor.requestCompilation": { requested: true },
+        "editor.requestCompilation": { requested: true, requestId: "compile-1" },
         "play.enter": { requested: true },
         "play.exit": { requested: true },
         "play.setPaused": { paused: true },
@@ -237,7 +247,7 @@ const startFakeBridge = async (options: {
   await mkdir(join(root, "Library", "UnityAI"), { recursive: true });
   await writeFile(descriptorPath, JSON.stringify({
     protocolVersion: options.protocolVersion ?? UNITY_BRIDGE_PROTOCOL_VERSION,
-    bridgeVersion: "0.1.0",
+    bridgeVersion: "0.2.0",
     projectRoot: options.descriptorProject ?? root,
     unityVersion: "6000.3.11f1",
     editorProcessId: 1234,
@@ -285,8 +295,10 @@ test("bridge client authenticates and maps the focused command set with bounded 
   try {
     const client = new UnityBridgeClient(bridge.root);
     assert.equal((await client.ping()).unityVersion, "6000.3.11f1");
-    assert.equal((await client.editorStatus()).activeScene, "SampleScene");
-    assert.equal((await client.requestCompilation()).requested, true);
+    const editorStatus = await client.editorStatus();
+    assert.equal(editorStatus.activeScene, "SampleScene");
+    assert.equal(editorStatus.lastCompilation?.errorCount, 0);
+    assert.equal((await client.requestCompilation()).requestId, "compile-1");
     assert.equal((await client.enterPlayMode()).requested, true);
     assert.equal((await client.exitPlayMode()).requested, true);
     assert.equal((await client.setPlayModePaused(true)).paused, true);
@@ -388,9 +400,14 @@ test("Unity package source layout remains Editor-only and contains explicit boun
   const packageJson = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")) as Record<string, unknown>;
   const assembly = JSON.parse(await readFile(join(packageRoot, "Editor", "UnityAI.EditorBridge.asmdef"), "utf8")) as Record<string, unknown>;
   const bridgeSource = await readFile(join(packageRoot, "Editor", "BridgeCommands.cs"), "utf8");
+  const compilationSource = await readFile(join(packageRoot, "Editor", "CompilationTracker.cs"), "utf8");
   assert.equal(packageJson.name, "com.unityai.editor-bridge");
+  assert.equal(packageJson.version, "0.2.0");
   assert.deepEqual(assembly.includePlatforms, ["Editor"]);
   assert.doesNotMatch(bridgeSource, /execute_csharp|Process\.Start|File\.Write|MenuItem/u);
+  assert.match(compilationSource, /CompilationPipeline\.assemblyCompilationFinished/u);
+  assert.match(compilationSource, /CompilationPipeline\.compilationFinished/u);
+  assert.doesNotMatch(compilationSource, /System\.Diagnostics|Process\.Start/u);
   for (const method of [
     "bridge.ping",
     "editor.status",

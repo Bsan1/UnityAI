@@ -49,7 +49,7 @@ Do not introduce a dependency graph unless a later demonstrated need requires it
 
 ## D-009: QA is layered, comprehensive, and evidence-based
 
-**Decision:** Future QA levels are QA0 static, QA1 Unity/project structure, QA2 Play Mode interaction, and QA3 player-like gameplay validation. A QA session attempts every check that can reasonably continue after a failure and batches all discovered failures.
+**Decision:** QA levels are QA0 static, QA1 Unity/project structure, QA2 Play Mode interaction, and QA3 player-like gameplay validation. M7 implements QA0-QA2; M8 owns QA3. A QA session attempts every check that can reasonably continue after a failure and batches all discovered failures.
 
 Acceptance criteria should use evidence such as compiler and Unity console output, runtime state, Game View screenshots, input history, object/component state, and custom probes. Code appearance alone is not sufficient evidence for behavioral criteria.
 
@@ -95,4 +95,14 @@ The concrete terminal M5 state is `READY_FOR_QA`. It means implementation and op
 
 Each Editor session uses a random authenticated descriptor under the non-versioned `Library/UnityAI` area and a TCP listener bound only to numeric loopback. Network work is queued to Unity's main thread. Unity capabilities are a fixed set of bounded, structured commands; arbitrary C# execution, reflection/menu invocation, filesystem, shell, and process access are intentionally absent. The stdio Unity MCP server reuses the same validated Node bridge client/protocol instead of implementing another transport.
 
-M6 supplies inspection and Editor control capabilities only. It does not inject input, capture visual QA, decide pass/fail, build gameplay probes, run automatic fixes, or perform player-like gameplay validation; those remain bounded work for M7/M8.
+M6 supplies inspection and Editor control capabilities only. M7 consumes them for QA0-QA2 decisions and correction, while input injection, visual QA, gameplay probes, and player-like validation remain M8 responsibilities.
+
+## D-018: M7 batches evidence, fixes conservatively, and finalizes only complete work
+
+**Decision:** An M7 QA cycle attempts every STATIC, STRUCTURAL, and RUNTIME test that can reasonably continue before producing one evidence-backed report. Ordinary failures are batched; prerequisite failures block only dependent tests. Review findings are investigation context rather than automatic QA failures. Provider, Editor, bridge, MCP, cancellation, restart, and invalid-output failures are technical failures and are never disguised as game-code findings.
+
+Automatic Fixes remains exactly `ON` or `OFF`. Fix receives the complete latest defect batch only after the test cycle finishes, runs with `WORKTREE_WRITE` only in the M2-managed worktree, and uses exactly the approved Implementation provider/model/effort. It never uses the QA route or escalates. Every successful fix creates a checkpoint without UnityAI bridge tooling and is followed by full QA from the beginning. One orchestration run permits at most three automatic fix executions; this is an internal runaway-safety bound, not a user profile or mode.
+
+M7 executes only QA0 STATIC, QA1 STRUCTURAL, and QA2 RUNTIME. Every required GAMEPLAY test is recorded `NOT_RUN` with `REQUIRES_M8_GAMEPLAY_QA`, transitions the task to `READY_FOR_GAMEPLAY_QA` after the M7 subset passes, and prevents Git finalization or `COMPLETED`. M7 implements no keyboard, mouse, gamepad, Input System injection, screenshot vision, or player-like behavior.
+
+For a task with no remaining required GAMEPLAY checks, `COMPLETED` requires an evidence-backed M7 PASS, safe owned-Editor shutdown, marker-verified temporary bridge removal, a tooling-free meaningful final diff, and one M2-squashed task commit. Internal implementation/fix checkpoints disappear from final task-branch history. Finalization still never merges, pushes, or modifies the original worktree.

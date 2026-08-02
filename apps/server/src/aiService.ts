@@ -7,6 +7,7 @@ import type {
 
 import type {
   AIExecutionResult,
+  PlannedExecutionOptions,
   ProviderAvailability,
 } from "./aiProvider.js";
 import { AgentExecutor } from "./agentExecutor.js";
@@ -52,7 +53,8 @@ export class AIService {
     value: unknown,
     plan: ModelPlan & { readonly effort: ReasoningEffort },
     signal?: AbortSignal,
+    options: PlannedExecutionOptions = {},
   ): Promise<AIExecutionResult> {
-    return this.executor.executePlanned(value, plan, signal);
+    return this.executor.executePlanned(value, plan, signal, options);
   }
 }

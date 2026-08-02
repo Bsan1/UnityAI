@@ -13,8 +13,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 
 import {
   BlockedView,
+  CompletedTask,
   ProjectUnityStatus,
+  QAProgressView,
+  QAResultView,
   ReadyForQa,
+  ReadyForGameplayQA,
   UnityTooling,
 } from "../src/App.js";
 import { ApiError, userMessageForError } from "../src/api.js";
@@ -54,6 +58,7 @@ test("blocked task UI renders all four simple actions without raw JSON", () => {
       events: blocked.events,
       reviewFindingCount: 0,
     },
+    qa: { sessions: [], reports: [], fixes: [] },
     blockedActions: [
       "CREATE_PREREQUISITE_TASK",
       "PAUSE",
@@ -173,12 +178,212 @@ test("READY_FOR_QA UI states that QA has not passed and surfaces review findings
       events: task.events,
       reviewFindingCount: 1,
     },
+    qa: { sessions: [], reports: [], fixes: [] },
     blockedActions: [],
   };
-  const markup = renderToStaticMarkup(<ReadyForQa details={details} />);
+  const markup = renderToStaticMarkup(
+    <ReadyForQa details={details} busy={false} onRunQA={() => undefined} />,
+  );
   assert.match(markup, /does not mean this task passed QA/u);
+  assert.match(markup, /Automatic Fixes: ON/u);
+  assert.match(markup, />Run QA</u);
   assert.match(markup, /REVIEW-001/u);
   assert.match(markup, /not been finalized, merged, or pushed/u);
+});
+
+test("M7 QA UI renders progress, a complete evidence-backed batch, gameplay pending, and final commit state", () => {
+  const timestamp = new Date().toISOString();
+  const baseTask = parseTask({
+    id: "TASK-8003",
+    title: "QA fixture",
+    originalRequest: "Add a QA fixture.",
+    targetProjectPath: "C:/project",
+    strength: "STANDARD",
+    state: "FAILED",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    crossReviewEnabled: false,
+    automaticFixesEnabled: false,
+    taskContract: {
+      understoodExplicitRequirements: ["Add the fixture."],
+      inferredRequirements: [],
+      prerequisites: [],
+      implementationScope: ["Assets/Fixture.cs"],
+      nonGoals: ["No player input."],
+      acceptanceCriteria: ["Fixture initializes."],
+      testRequirements: ["RUNTIME: Fixture initializes."],
+      approved: true,
+      approvedAt: timestamp,
+    },
+    prerequisiteDraftIds: [],
+    events: [{ timestamp, type: "TASK_CREATED" }],
+  });
+  const evidence = {
+    id: "EVID-0001",
+    kind: "PLAY_MODE" as const,
+    summary: "Runtime object was missing.",
+    capturedAt: timestamp,
+  };
+  const result = {
+    testId: "TEST-001",
+    category: "RUNTIME" as const,
+    status: "FAIL" as const,
+    summary: "Fixture did not initialize.",
+    expected: "Fixture object is active.",
+    observed: "Fixture object was absent.",
+    evidence: [evidence.id],
+    likelyArea: ["Assets/Fixture.cs"],
+  };
+  const finding = {
+    id: "FAIL-001",
+    severity: "blocking" as const,
+    title: "Fixture initialization failed",
+    description: "The required runtime object was not present.",
+    relatedAcceptanceCriteria: ["AC-001"],
+    relatedTests: [result.testId],
+    reproduction: ["Enter Play Mode."],
+    expected: result.expected,
+    observed: result.observed,
+    evidence: [evidence.id],
+    suspectedArea: ["Assets/Fixture.cs"],
+    source: "RUNTIME" as const,
+  };
+  const session = {
+    schemaVersion: 1 as const,
+    sessionId: "QA-UI",
+    taskId: baseTask.id,
+    cycleNumber: 1,
+    startedAt: timestamp,
+    completedAt: timestamp,
+    status: "FAIL" as const,
+    plannedTests: [{
+      id: result.testId,
+      category: result.category,
+      description: "Fixture initializes.",
+      required: true as const,
+      source: "CONTRACT" as const,
+    }],
+    results: [result],
+    findings: [finding],
+    blockedTests: [],
+    evidence: [evidence],
+    summary: { text: "One failure.", passed: 0, failed: 1, blocked: 0, notRun: 0, gameplayPending: 0 },
+  };
+  const report = {
+    schemaVersion: 1 as const,
+    sessionId: session.sessionId,
+    taskId: baseTask.id,
+    cycleNumber: 1,
+    outcome: "FAIL" as const,
+    summary: session.summary,
+    results: [result],
+    findings: [finding],
+    blockedTests: [],
+    generatedAt: timestamp,
+    manualFixAvailable: true,
+  };
+  const details: TaskDetailsResponse = {
+    task: baseTask,
+    git: {},
+    orchestration: {},
+    progress: {
+      taskId: baseTask.id,
+      state: baseTask.state,
+      active: false,
+      steps: [],
+      events: baseTask.events,
+      reviewFindingCount: 0,
+      qaCycle: 1,
+      qaSummary: { passed: 0, failed: 1, blocked: 0, gameplayPending: 0 },
+    },
+    qa: {
+      sessions: [session],
+      reports: [report],
+      fixes: [],
+      latestSession: session,
+      latestReport: report,
+    },
+    blockedActions: [],
+  };
+
+  const failureMarkup = renderToStaticMarkup(
+    <QAResultView
+      details={details}
+      busy={false}
+      onFixAndRetest={() => undefined}
+      onPause={() => undefined}
+      onCancel={() => undefined}
+    />,
+  );
+  assert.match(failureMarkup, /Complete QA failure batch/u);
+  assert.match(failureMarkup, /FAIL-001/u);
+  assert.match(failureMarkup, /Expected: Fixture object is active/u);
+  assert.match(failureMarkup, /EVID-0001: Runtime object was missing/u);
+  assert.match(failureMarkup, /Fix &amp; retest/u);
+
+  const testingDetails = {
+    ...details,
+    task: { ...baseTask, state: "TESTING" as const },
+  };
+  const progressMarkup = renderToStaticMarkup(
+    <QAProgressView
+      details={testingDetails}
+      busy={false}
+      onPause={() => undefined}
+      onCancel={() => undefined}
+    />,
+  );
+  assert.match(progressMarkup, /Running static, structural, and runtime QA/u);
+  assert.match(progressMarkup, /No chain-of-thought/u);
+
+  const pendingSession = {
+    ...session,
+    status: "INCOMPLETE_GAMEPLAY" as const,
+    summary: { text: "M7 passed.", passed: 3, failed: 0, blocked: 0, notRun: 1, gameplayPending: 1 },
+  };
+  const pendingMarkup = renderToStaticMarkup(
+    <ReadyForGameplayQA
+      details={{
+        ...details,
+        task: { ...baseTask, state: "READY_FOR_GAMEPLAY_QA" },
+        qa: { ...details.qa, latestSession: pendingSession },
+      }}
+    />,
+  );
+  assert.match(pendingMarkup, /1 required player-level gameplay test/u);
+  assert.match(pendingMarkup, /M8 player-like QA is required/u);
+
+  const completedMarkup = renderToStaticMarkup(
+    <CompletedTask
+      details={{
+        ...details,
+        task: { ...baseTask, state: "COMPLETED" },
+        git: {
+          environment: {
+            schemaVersion: 1,
+            taskId: baseTask.id,
+            repositoryRoot: "C:/project",
+            originalWorktreePath: "C:/project",
+            gitCommonDirectory: "C:/project/.git",
+            baseBranch: "main",
+            baseCommit: "base",
+            taskBranch: "ai/TASK-8003",
+            taskWorktreePath: "C:/runtime/TASK-8003",
+            writeOwnerTaskId: baseTask.id,
+            status: "FINALIZED",
+            createdAt: timestamp,
+            finalizedAt: timestamp,
+            finalCommit: "final-commit",
+            checkpoints: [],
+          },
+        },
+      }}
+    />,
+  );
+  assert.match(completedMarkup, /All required QA passed/u);
+  assert.match(completedMarkup, /final-commit/u);
+  assert.match(completedMarkup, /Merged: No/u);
+  assert.match(completedMarkup, /Pushed: No/u);
 });
 
 test("dirty-worktree errors are translated into actionable UI copy", () => {

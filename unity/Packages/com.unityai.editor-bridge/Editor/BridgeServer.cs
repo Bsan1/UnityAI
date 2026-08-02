@@ -65,6 +65,7 @@ namespace UnityAI.EditorBridge
         private readonly string descriptorPath;
         private readonly string token;
         private readonly ConsoleReader console;
+        private readonly CompilationTracker compilation;
         private readonly BridgeCommands commands;
         private TcpListener listener;
         private Thread listenerThread;
@@ -76,7 +77,8 @@ namespace UnityAI.EditorBridge
             descriptorPath = Path.Combine(projectRoot, "Library", "UnityAI", "bridge-session.json");
             token = CreateToken();
             console = new ConsoleReader();
-            commands = new BridgeCommands(projectRoot, console);
+            compilation = new CompilationTracker(projectRoot);
+            commands = new BridgeCommands(projectRoot, console, compilation);
         }
 
         internal void Start()
@@ -105,6 +107,7 @@ namespace UnityAI.EditorBridge
             cancellation.Cancel();
             try { listener?.Stop(); } catch (Exception) { }
             console.Dispose();
+            compilation.Dispose();
             try
             {
                 if (File.Exists(descriptorPath))

@@ -4,7 +4,7 @@ UnityAI is a standalone, local AI development orchestrator for external Unity ga
 
 ## Current status
 
-The repository has completed **M6 - Unity Project Adapter, Editor Bridge, and Unity MCP Foundation**. It currently provides:
+The repository has completed **M7 - QA Engine, Batch Failure Reporting, Automatic Fix Loop, and Safe Finalization**. It currently provides:
 
 - an npm workspace;
 - a strict core task model with explicit lifecycle transitions and audit history;
@@ -31,11 +31,18 @@ The repository has completed **M6 - Unity Project Adapter, Editor Bridge, and Un
 - structured Editor status, compilation, Play Mode, bounded console, scene, hierarchy, and object snapshot commands;
 - a reusable Node `UnityBridgeClient`, owned Unity Editor process lifecycle, idle waiting, and restart revalidation;
 - a stdio Unity MCP server exposing only ten explicit Unity tools;
-- a Node.js/TypeScript HTTP server with health, project, task, Git, AI-development, analysis, workflow, and Unity tooling APIs;
+- evidence-backed STATIC, STRUCTURAL, and RUNTIME QA that completes every reasonably executable planned test before reporting;
+- one persisted batch report per QA cycle, with ordinary code failures separated from technical infrastructure failures;
+- provider-neutral read-only QA execution through the safe Unity MCP tool set;
+- binary Automatic Fixes behavior, exact Implementation-route Fix execution, fix checkpoints, and full-session retesting;
+- a fixed internal maximum of three automatic fix executions per orchestration run, with no model escalation;
+- explicit `READY_FOR_GAMEPLAY_QA` handling for required player-input tests that M7 cannot execute;
+- owned-bridge cleanup and one-commit M2 squash finalization only after every required M7-capable test passes and no GAMEPLAY test remains;
+- a Node.js/TypeScript HTTP server with health, project, task, Git, AI-development, analysis, workflow, Unity tooling, and QA APIs;
 - small `core`, `shared`, and `unity` TypeScript packages; and
 - product and architecture documentation.
 
-M1's manually supplied feasibility/contract routes and M3's explicit AI route remain development support. M4 analysis still stops for approval; M5 continues only after an explicit implementation start. M6 adds Unity capabilities alongside `READY_FOR_QA` without deciding QA results. QA planning/execution, automatic fixes, input injection, screenshots/vision, player-like testing, final Git squash, merging, and pushing are intentionally not implemented. M7 is next.
+M1's manually supplied feasibility/contract routes and M3's explicit AI route remain development support. M4 analysis still stops for approval; M5 continues only after an explicit implementation start. M7 now consumes `READY_FOR_QA`, but it never simulates player input or marks required GAMEPLAY checks as passed. Input injection, screenshots/vision, and player-like testing remain M8 work. UnityAI still never merges or pushes. M8 is next.
 
 ## Requirements
 
@@ -62,7 +69,7 @@ npm run dev:web
 
 The server listens on `http://127.0.0.1:3000` by default. The Vite development server proxies the local API routes to it. Set `UNITYAI_PORT` to change the server port, `UNITYAI_RUNTIME_PATH` to use a different runtime-data directory, or `UNITYAI_CONFIG_PATH` to load different task defaults. M3 also supports `UNITYAI_AGENTS_PATH`, `UNITYAI_MODELS_CONFIG_PATH`, and `UNITYAI_PROVIDERS_CONFIG_PATH`; configuration changes require a restart.
 
-Open `http://localhost:5173` for the local UI. Add a Git project path, create and analyze a task, approve its contract, then explicitly start implementation. Long-running implementation/review work continues in the local server and the UI polls persisted progress. Project details show cheap Unity metadata; a `READY_FOR_QA` task offers explicit Prepare/Start/Wait/Stop/Remove Unity tooling controls.
+Open `http://localhost:5173` for the local UI. Add a Git project path, create and analyze a task, approve its contract, then explicitly start implementation. Long-running implementation, review, QA, and fix work continues in the local server while the UI polls persisted progress. A `READY_FOR_QA` task can start M7 QA; batch failures, automatic-fix progress, gameplay-pending status, and a finalized local task commit are shown without exposing model reasoning.
 
 ## Task and M4 analysis API
 
@@ -86,7 +93,7 @@ Open `http://localhost:5173` for the local UI. Add a Git project path, create an
 | `POST` | `/tasks/:id/prerequisite-draft` | Create an editable prerequisite draft without executing it |
 | `POST` | `/tasks/:id/start-implementation` | Start the guarded background M5 implementation/review flow |
 | `GET` | `/tasks/:id/progress` | Read normalized pipeline steps and task events |
-| `GET` | `/tasks/:id/details` | Read the task plus analysis, Git, implementation, and review summaries |
+| `GET` | `/tasks/:id/details` | Read the task plus analysis, Git, implementation, review, and QA summaries |
 | `GET` | `/tasks/:id/events` | Read task audit events without model reasoning transcripts |
 
 Task strengths are `LIGHT`, `STANDARD`, and `STRONG`. An optional create-time strength is only an initial value; M4 deterministically records the final strength before approval. Defaults in `config/defaults.json` set Cross Review and Automatic Fixes to `true`; each task persists its copied values.
@@ -113,7 +120,7 @@ The task branch is `ai/TASK-0001`; the worktree defaults to `runtime/worktrees/T
 
 ## Persistence
 
-Projects and global defaults are stored in `runtime/projects.json` and `runtime/settings.json`. Tasks use `runtime/tasks/TASK-0001/task.json`; M2 Git metadata remains in `git.json`, M4 analysis remains under `analysis/`, and M6 stores non-secret Unity lifecycle metadata in `unity.json`. M5 writes `implementation/result.json`, `review/result.json`, and orchestration failure/Git snapshot data beside the task. The bridge session token exists only in the worktree's non-versioned `Library/UnityAI/bridge-session.json`. Writes use a temporary file followed by a same-directory rename. Persisted content is validated on read, and invalid metadata fails clearly.
+Projects and global defaults are stored in `runtime/projects.json` and `runtime/settings.json`. Tasks use `runtime/tasks/TASK-0001/task.json`; M2 Git metadata remains in `git.json`, M4 analysis remains under `analysis/`, and M6 stores non-secret Unity lifecycle metadata in `unity.json`. M5 writes `implementation/result.json`, `review/result.json`, and orchestration failure/Git snapshot data beside the task. M7 stores each QA cycle under `qa/cycle-###`, evidence beside its session/report, fix results under `fixes/fix-###`, and only references global provider run IDs. The bridge session token exists only in the worktree's non-versioned `Library/UnityAI/bridge-session.json`. Writes use a temporary file followed by a same-directory rename. Persisted content is validated on read, and invalid metadata fails clearly.
 
 ## Project and M5 workflow API
 
@@ -176,7 +183,7 @@ The source bridge is [`unity/Packages/com.unityai.editor-bridge`](unity/Packages
 
 The Editor listener binds only `127.0.0.1` on a random port and writes its random session token to `Library/UnityAI/bridge-session.json`. Every versioned newline-JSON request authenticates. Network threads only validate/enqueue; known Unity API commands execute through the Editor main-thread update queue. Request/response, console, hierarchy, object, and persisted metadata sizes are bounded. The bridge exposes no arbitrary C#, reflection/menu invocation, filesystem, shell, or process command.
 
-Implemented commands are `bridge.ping`, `editor.status`, `editor.requestCompilation`, `play.enter`, `play.exit`, `play.setPaused`, `console.get`, `scene.summary`, `scene.hierarchy`, and `object.snapshot`. Console capture is explicitly partial (`complete: false`) because it contains bounded logs observed during the bridge session. M6 was live-tested only with Unity **6000.3.11f1 on Windows**; the package uses public Editor APIs and keeps compatibility concerns isolated, but other versions are not claimed as tested.
+Implemented commands are `bridge.ping`, `editor.status`, `editor.requestCompilation`, `play.enter`, `play.exit`, `play.setPaused`, `console.get`, `scene.summary`, `scene.hierarchy`, and `object.snapshot`. General console capture is explicitly partial (`complete: false`) because it contains bounded logs observed during the bridge session. Bridge version 0.2.0 additionally records bounded compiler messages and authoritative error/warning counts for an identified requested compilation through public `CompilationPipeline` callbacks; this does not add another bridge or MCP command. Unity integration has been live-tested only with Unity **6000.3.11f1 on Windows**; other versions are not claimed as tested.
 
 ### Unity HTTP API
 
@@ -210,6 +217,47 @@ npx tsx scripts/liveM6Smoke.ts --unityExecutable "C:\\Program Files\\Unity\\Hub\
 ```
 
 It creates a disposable Git/Unity fixture, never opens a registered user game project, directly exercises the bridge and MCP server, verifies the original temporary branch/worktree, stops its owned Editor, removes the bridge, and cleans the successful fixture.
+
+## M7 QA and correction behavior
+
+`QAOrchestrator` accepts only `READY_FOR_QA` tasks with an approved routing snapshot and an active M2-managed worktree. It prepares or reconnects M6 tooling, deterministically verifies the product diff and an identified Unity compilation, captures bounded Editor/scene/hierarchy/console/Play Mode evidence, and runs the `qa` agent `READ_ONLY` with a per-run Unity MCP configuration. Codex and Claude translate the same provider-neutral MCP definition inside their own adapters; HTTP callers cannot supply executables, MCP flags, or arbitrary tools.
+
+Each cycle attempts all still-meaningful STATIC, STRUCTURAL, and RUNTIME requirements. Compilation errors block dependent runtime checks but do not stop unrelated static or structural checks. Required GAMEPLAY tests are always recorded as `NOT_RUN` with `REQUIRES_M8_GAMEPLAY_QA`; M7 never fabricates a gameplay pass. Review findings and `qaFocus` are supplied as investigation context, not automatically converted into QA defects.
+
+Ordinary failures produce one complete evidence-backed report. With Automatic Fixes `OFF`, UnityAI stops and offers **Fix & Retest**. With it `ON`, the Fix Agent receives the whole batch, runs only in the managed worktree using the exact approved Implementation provider/model/effort, creates a bridge-free fix checkpoint, and starts a fresh full QA session. At most three automatic fix executions occur in one orchestration run. Technical failures such as Editor/MCP/provider interruption never invoke Fix and never trigger model escalation.
+
+When all M7-supported checks pass but required GAMEPLAY checks remain, the task becomes `READY_FOR_GAMEPLAY_QA` and keeps its active task branch for M8. When no GAMEPLAY check remains, M7 exits Play Mode, stops only an owned Editor, removes marker-verified bridge tooling, verifies it is absent from the diff, asks M2 to squash all implementation/fix checkpoints into one local task commit, and only then marks the task `COMPLETED`. It never merges or pushes, and it never mutates the original project worktree.
+
+QA artifacts use:
+
+```text
+runtime/tasks/TASK-0001/qa/cycle-001/session.json
+runtime/tasks/TASK-0001/qa/cycle-001/report.json
+runtime/tasks/TASK-0001/qa/cycle-001/evidence/EVID-0001.json
+runtime/tasks/TASK-0001/fixes/fix-001/result.json
+```
+
+### M7 QA HTTP API
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `POST` | `/tasks/:id/qa/start` | Queue one guarded QA/fix orchestration run |
+| `GET` | `/tasks/:id/qa` | Read all persisted QA sessions, reports, fixes, and latest technical failure |
+| `GET` | `/tasks/:id/qa/latest` | Read the latest session/report/failure |
+| `GET` | `/tasks/:id/qa/cycles` | List persisted QA sessions |
+| `GET` | `/tasks/:id/qa/cycles/cycle-001` | Read one cycle and its report |
+| `POST` | `/tasks/:id/qa/fix-and-retest` | Explicitly run Fix against the latest complete failure batch, then full QA |
+| `POST` | `/tasks/:id/qa/cancel` | Abort the active local QA/fix provider run while preserving worktree/artifacts |
+
+Task-level Pause/Cancel also abort an active M7 run. A restart converts orphaned `TESTING`/`FIXING` state and any persisted running session into an explicit technical interruption; it does not restart a paid provider call or trust stale Editor ownership.
+
+After a normal build, the bounded live M7 integration smoke creates a disposable Unity project, uses one real Codex QA execution with Unity MCP, and cleans the fixture only after safe finalization succeeds:
+
+```bash
+npx tsx scripts/liveM7Smoke.ts --unityExecutable "C:\\Program Files\\Unity\\Hub\\Editor\\6000.3.11f1\\Editor\\Unity.exe"
+```
+
+It never opens a registered/user game project. Do not repeat it merely to reconfirm a successful paid-provider run.
 
 ## Documentation
 

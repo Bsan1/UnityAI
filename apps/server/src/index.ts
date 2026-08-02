@@ -14,6 +14,8 @@ import { GitSafetyService } from "./gitSafetyService.js";
 import { ImplementationOrchestrator } from "./implementationOrchestrator.js";
 import { OrchestrationArtifactStore } from "./orchestrationArtifactStore.js";
 import { ProjectRegistry } from "./projectRegistry.js";
+import { QAArtifactStore } from "./qaArtifactStore.js";
+import { QAOrchestrator } from "./qaOrchestrator.js";
 import { SettingsStore } from "./settingsStore.js";
 import { TaskService } from "./taskService.js";
 import { TaskStore } from "./taskStore.js";
@@ -108,6 +110,29 @@ const unityEnvironmentService = new UnityEnvironmentService({
     "com.unityai.editor-bridge",
   ),
 });
+const qaArtifacts = new QAArtifactStore(runtimeRoot);
+await qaArtifacts.initialize();
+const qaOrchestrator = new QAOrchestrator(
+  {
+    tasks: service,
+    git: gitService,
+    ai: aiService,
+    unity: unityEnvironmentService,
+    analysis: analysisArtifacts,
+    orchestration: orchestrationArtifacts,
+    artifacts: qaArtifacts,
+  },
+  {
+    unityMcpEntrypoint: join(
+      workspaceRoot,
+      "apps",
+      "unity-mcp",
+      "dist",
+      "main.js",
+    ),
+  },
+);
+await qaOrchestrator.recoverInterruptedRuns();
 const workflowService = new WorkflowService({
   tasks: service,
   projects: projectRegistry,
@@ -116,6 +141,7 @@ const workflowService = new WorkflowService({
   git: gitService,
   orchestration: implementationOrchestrator,
   orchestrationArtifacts,
+  qa: qaOrchestrator,
 });
 const server = createUnityAiServer(
   service,
@@ -128,6 +154,7 @@ const server = createUnityAiServer(
     workflow: workflowService,
     orchestrator: implementationOrchestrator,
     unity: unityEnvironmentService,
+    qa: qaOrchestrator,
   },
 );
 const port = resolvePort(process.env.UNITYAI_PORT);

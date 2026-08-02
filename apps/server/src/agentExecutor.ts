@@ -11,6 +11,7 @@ import type {
   JsonValue,
   ModelDefinition,
   ModelPlan,
+  McpStdioServerConfiguration,
   ReasoningEffort,
 } from "@unityai/core";
 
@@ -18,6 +19,7 @@ import type {
   AIExecutionInput,
   AIExecutionResult,
   ProviderExecutionResult,
+  PlannedExecutionOptions,
 } from "./aiProvider.js";
 import { AIExecutionError } from "./aiErrors.js";
 import { AgentRegistry } from "./agentRegistry.js";
@@ -211,6 +213,66 @@ const unexpectedProviderResult = (
   };
 };
 
+const validateMcpServers = (
+  value: readonly McpStdioServerConfiguration[] | undefined,
+): readonly McpStdioServerConfiguration[] => {
+  if (value === undefined) {
+    return [];
+  }
+  const ids = new Set<string>();
+  return value.map((server, index) => {
+    const path = `MCP server[${index}]`;
+    if (!/^[A-Za-z][A-Za-z0-9_-]{0,63}$/u.test(server.id) || ids.has(server.id)) {
+      throw new AIExecutionError(
+        "INVALID_EXECUTION_REQUEST",
+        `${path}.id must be unique and use letters, digits, underscore, or hyphen.`,
+        422,
+      );
+    }
+    ids.add(server.id);
+    if (
+      server.transport !== "stdio" ||
+      server.command.trim().length === 0 ||
+      server.arguments.some((argument) => typeof argument !== "string") ||
+      server.allowedTools.length === 0 ||
+      server.allowedTools.some((tool) => !/^[A-Za-z][A-Za-z0-9_-]{0,127}$/u.test(tool))
+    ) {
+      throw new AIExecutionError(
+        "INVALID_EXECUTION_REQUEST",
+        `${path} contains an invalid stdio command or tool allow-list.`,
+        422,
+      );
+    }
+    for (const [key, entry] of Object.entries(server.environment ?? {})) {
+      if (!/^[A-Za-z_][A-Za-z0-9_]*$/u.test(key) || typeof entry !== "string") {
+        throw new AIExecutionError(
+          "INVALID_EXECUTION_REQUEST",
+          `${path}.environment is invalid.`,
+          422,
+        );
+      }
+    }
+    for (const [name, timeout] of [
+      ["startupTimeoutMs", server.startupTimeoutMs],
+      ["toolTimeoutMs", server.toolTimeoutMs],
+    ] as const) {
+      if (timeout !== undefined && (!Number.isSafeInteger(timeout) || timeout < 1_000 || timeout > 3_600_000)) {
+        throw new AIExecutionError(
+          "INVALID_EXECUTION_REQUEST",
+          `${path}.${name} must be an integer from 1000 to 3600000.`,
+          422,
+        );
+      }
+    }
+    return {
+      ...server,
+      arguments: [...server.arguments],
+      allowedTools: [...server.allowedTools],
+      ...(server.environment === undefined ? {} : { environment: { ...server.environment } }),
+    };
+  });
+};
+
 export class AgentExecutor {
   private readonly agents: AgentRegistry;
   private readonly models: ModelRegistry;
@@ -242,6 +304,7 @@ export class AgentExecutor {
     value: unknown,
     plan: ModelPlan & { readonly effort: ReasoningEffort },
     signal?: AbortSignal,
+    options: PlannedExecutionOptions = {},
   ): Promise<AIExecutionResult> {
     const input = parseInput(value, this.defaultTimeoutMs, signal);
     if (input.modelId !== plan.modelId || input.effort !== plan.effort) {
@@ -259,12 +322,13 @@ export class AgentExecutor {
       supportedReasoningEfforts: [plan.effort],
       capabilities: { structuredOutput: true },
     };
-    return this.executeResolved(input, model);
+    return this.executeResolved(input, model, options);
   }
 
   private async executeResolved(
     input: AIExecutionInput,
     model: ModelDefinition,
+    options: PlannedExecutionOptions = {},
   ): Promise<AIExecutionResult> {
     const agent = this.agents.get(input.agentId);
     if (!model.supportedReasoningEfforts.includes(input.effort)) {
@@ -326,6 +390,7 @@ export class AgentExecutor {
 
     const startedAt = new Date().toISOString();
     const timeoutMs = input.timeoutMs ?? this.defaultTimeoutMs;
+    const mcpServers = validateMcpServers(options.mcpServers);
     const handle = await this.artifacts.begin({
       agent,
       model,
@@ -335,6 +400,7 @@ export class AgentExecutor {
       ...(input.context === undefined ? {} : { context: input.context }),
       timeoutMs,
       startedAt,
+      ...(mcpServers.length === 0 ? {} : { mcpServers }),
     });
     const prompt = assemblePrompt(agent, input.input, input.context);
     let providerExecution: ProviderExecutionResult;
@@ -350,6 +416,7 @@ export class AgentExecutor {
           : { expectedOutputSchema: agent.expectedOutputSchema }),
         timeoutMs,
         ...(input.signal === undefined ? {} : { signal: input.signal }),
+        ...(mcpServers.length === 0 ? {} : { mcpServers }),
       });
     } catch {
       providerExecution = unexpectedProviderResult(provider.id, startedAt);

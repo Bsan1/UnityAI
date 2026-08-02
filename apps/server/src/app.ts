@@ -11,6 +11,7 @@ import { ServerError } from "./errors.js";
 import type { GitSafetyService } from "./gitSafetyService.js";
 import type { ImplementationOrchestrator } from "./implementationOrchestrator.js";
 import type { ProjectRegistry } from "./projectRegistry.js";
+import type { QAOrchestrator } from "./qaOrchestrator.js";
 import type { SettingsStore } from "./settingsStore.js";
 import type { TaskService } from "./taskService.js";
 import type { WorkflowService } from "./workflowService.js";
@@ -22,6 +23,7 @@ export interface M5ServerServices {
   readonly workflow: WorkflowService;
   readonly orchestrator: ImplementationOrchestrator;
   readonly unity?: UnityEnvironmentService;
+  readonly qa?: QAOrchestrator;
 }
 
 const maximumBodyBytes = 1_048_576;
@@ -187,6 +189,7 @@ const handleTaskAction = async (
     }
     case "pause": {
       m5?.orchestrator.abort(id);
+      m5?.qa?.cancel(id);
       const task = await service.pause(id, await readJsonBody(request));
       sendJson(response, 200, { task });
       return true;
@@ -225,6 +228,7 @@ const handleTaskAction = async (
     }
     case "cancel": {
       m5?.orchestrator.abort(id);
+      m5?.qa?.cancel(id);
       const task = await service.cancel(id, await readJsonBody(request));
       sendJson(response, 200, { task });
       return true;
@@ -511,6 +515,47 @@ const handleRequest = async (
     }
     if (id !== undefined && area === "bridge" && action === "remove" && request.method === "POST") {
       sendJson(response, 200, await m5.unity.removeBridge(id));
+      return;
+    }
+  }
+
+  const qaRoute = /^\/tasks\/(TASK-\d{4,})\/qa(?:\/([a-z-]+)(?:\/(cycle-\d{3,}))?)?$/.exec(path);
+  if (qaRoute !== null && m5?.qa !== undefined) {
+    const id = qaRoute[1];
+    const action = qaRoute[2];
+    const cycleId = qaRoute[3];
+    if (id !== undefined && action === undefined && request.method === "GET") {
+      sendJson(response, 200, { qa: await m5.qa.get(id) });
+      return;
+    }
+    if (id !== undefined && action === "latest" && request.method === "GET") {
+      const qa = await m5.qa.get(id);
+      sendJson(response, 200, {
+        session: qa.latestSession,
+        report: qa.latestReport,
+        failure: qa.latestFailure,
+      });
+      return;
+    }
+    if (id !== undefined && action === "cycles" && cycleId === undefined && request.method === "GET") {
+      const qa = await m5.qa.get(id);
+      sendJson(response, 200, { cycles: qa.sessions });
+      return;
+    }
+    if (id !== undefined && action === "cycles" && cycleId !== undefined && request.method === "GET") {
+      sendJson(response, 200, await m5.qa.getCycle(id, Number(cycleId.slice("cycle-".length))));
+      return;
+    }
+    if (id !== undefined && action === "start" && request.method === "POST") {
+      sendJson(response, 202, { run: await m5.qa.start(id) });
+      return;
+    }
+    if (id !== undefined && action === "fix-and-retest" && request.method === "POST") {
+      sendJson(response, 202, { run: await m5.qa.fixAndRetest(id) });
+      return;
+    }
+    if (id !== undefined && action === "cancel" && request.method === "POST") {
+      sendJson(response, 202, { cancelRequested: m5.qa.cancel(id) });
       return;
     }
   }

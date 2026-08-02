@@ -35,6 +35,31 @@ const sandboxFor = (
 ): "read-only" | "workspace-write" =>
   request.agent.permission === "READ_ONLY" ? "read-only" : "workspace-write";
 
+const millisecondsToSeconds = (milliseconds: number): number =>
+  Math.max(1, Math.ceil(milliseconds / 1_000));
+
+const codexMcpArguments = (request: ProviderExecutionRequest): readonly string[] =>
+  (request.mcpServers ?? []).flatMap((server) => [
+    "-c",
+    `mcp_servers.${server.id}.command=${JSON.stringify(server.command)}`,
+    "-c",
+    `mcp_servers.${server.id}.args=${JSON.stringify(server.arguments)}`,
+    "-c",
+    `mcp_servers.${server.id}.enabled_tools=${JSON.stringify(server.allowedTools)}`,
+    "-c",
+    `mcp_servers.${server.id}.required=true`,
+    "-c",
+    `mcp_servers.${server.id}.default_tools_approval_mode="approve"`,
+    "-c",
+    `mcp_servers.${server.id}.startup_timeout_sec=${millisecondsToSeconds(server.startupTimeoutMs ?? 10_000)}`,
+    "-c",
+    `mcp_servers.${server.id}.tool_timeout_sec=${millisecondsToSeconds(server.toolTimeoutMs ?? 60_000)}`,
+    ...Object.entries(server.environment ?? {}).flatMap(([key, value]) => [
+      "-c",
+      `mcp_servers.${server.id}.env.${key}=${JSON.stringify(value)}`,
+    ]),
+  ]);
+
 // UnityAI launches an independent Codex CLI execution. Desktop-host control
 // variables describe the parent Codex task and can otherwise override the
 // explicitly selected sandbox/permission context in the child process.
@@ -59,6 +84,7 @@ export const buildCodexCommand = (
     "--color",
     "never",
     "--ignore-user-config",
+    ...codexMcpArguments(request),
     ...(process.platform === "win32" && windowsSandbox !== undefined
       ? ["-c", `windows.sandbox="${windowsSandbox}"`]
       : []),

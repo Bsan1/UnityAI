@@ -643,7 +643,7 @@ export function App() {
               <p className="eyebrow">New task defaults</p>
               <h2>Simple controls</h2>
               <Toggle label="Cross Review" checked={settings.crossReviewEnabled} onChange={(checked) => void setDefault({ crossReviewEnabled: checked })} hint="Independent review after implementation" />
-              <Toggle label="Automatic Fixes" checked={settings.automaticFixesEnabled} onChange={(checked) => void setDefault({ automaticFixesEnabled: checked })} hint="Will apply in the future QA/fix workflow" />
+              <Toggle label="Automatic Fixes" checked={settings.automaticFixesEnabled} onChange={(checked) => void setDefault({ automaticFixesEnabled: checked })} hint="Applies the complete QA failure batch, then reruns full QA" />
               <p className="notice">Existing tasks keep the settings they were created with.</p>
             </section>
           </div>
@@ -772,7 +772,11 @@ export function App() {
 
             {selectedState === "READY_FOR_QA" ? (
               <>
-                <ReadyForQa details={details} />
+                <ReadyForQa
+                  details={details}
+                  busy={busy}
+                  onRunQA={() => void run(() => api.startQA(details.task.id))}
+                />
                 <UnityTooling
                   status={taskUnity}
                   busy={busy}
@@ -785,6 +789,33 @@ export function App() {
               </>
             ) : null}
 
+            {selectedState === "TESTING" || selectedState === "FIXING" ? (
+              <QAProgressView
+                details={details}
+                busy={busy}
+                onPause={() => void run(() => api.pause(details.task.id))}
+                onCancel={() => void run(() => api.cancel(details.task.id))}
+              />
+            ) : null}
+
+            {selectedState === "FAILED" && details.qa.latestReport !== undefined ? (
+              <QAResultView
+                details={details}
+                busy={busy}
+                onFixAndRetest={() => void run(() => api.fixAndRetest(details.task.id))}
+                onPause={() => void run(() => api.pause(details.task.id))}
+                onCancel={() => void run(() => api.cancel(details.task.id))}
+              />
+            ) : null}
+
+            {selectedState === "READY_FOR_GAMEPLAY_QA" ? (
+              <ReadyForGameplayQA details={details} />
+            ) : null}
+
+            {selectedState === "COMPLETED" ? (
+              <CompletedTask details={details} />
+            ) : null}
+
             <details className="debug-details">
               <summary>Technical details</summary>
               <dl>
@@ -793,6 +824,8 @@ export function App() {
                 <dt>Managed worktree</dt><dd>{details.git.environment?.taskWorktreePath ?? "Not prepared"}</dd>
                 <dt>Implementation run</dt><dd>{details.orchestration.implementation?.runId ?? "Not run"}</dd>
                 <dt>Review run</dt><dd>{details.orchestration.review?.runId ?? "Not run"}</dd>
+                <dt>Latest QA run</dt><dd>{details.qa.latestSession?.qaAgentRunId ?? "Not run"}</dd>
+                <dt>Final task commit</dt><dd>{details.git.environment?.finalCommit ?? "Not finalized"}</dd>
               </dl>
             </details>
           </>
@@ -946,13 +979,21 @@ export function UnityTooling({
   );
 }
 
-export function ReadyForQa({ details }: { readonly details: TaskDetailsResponse }) {
+export function ReadyForQa({
+  details,
+  busy,
+  onRunQA,
+}: {
+  readonly details: TaskDetailsResponse;
+  readonly busy: boolean;
+  readonly onRunQA: () => void;
+}) {
   const implementation = details.orchestration.implementation;
   const review = details.orchestration.review;
   return (
     <section className="panel ready-card">
       <p className="eyebrow">Implementation ready</p>
-      <h2>Waiting for QA capability</h2>
+      <h2>Ready to run QA</h2>
       <p className="important">READY FOR QA does not mean this task passed QA or is complete.</p>
       <div className="result-grid">
         <div><small>Task branch</small><strong>{details.git.environment?.taskBranch}</strong></div>
@@ -978,7 +1019,176 @@ export function ReadyForQa({ details }: { readonly details: TaskDetailsResponse 
           {review.qaFocus.length > 0 ? <><h4>Future QA focus</h4><BulletList items={review.qaFocus} /></> : null}
         </div>
       )}
+      <div className="qa-setting-line">
+        <strong>Automatic Fixes: {details.task.automaticFixesEnabled ? "ON" : "OFF"}</strong>
+        <small>{details.task.automaticFixesEnabled ? "Up to 3 internal fix cycles; every fix gets a full retest." : "Failures stop as one batch until you choose Fix & Retest."}</small>
+      </div>
+      <div className="actions">
+        <button className="primary" disabled={busy} type="button" onClick={onRunQA}>Run QA</button>
+      </div>
       <p className="notice">The task branch remains local and inspectable. It has not been finalized, merged, or pushed.</p>
+    </section>
+  );
+}
+
+export function QAProgressView({
+  details,
+  busy,
+  onPause,
+  onCancel,
+}: {
+  readonly details: TaskDetailsResponse;
+  readonly busy: boolean;
+  readonly onPause: () => void;
+  readonly onCancel: () => void;
+}) {
+  const session = details.qa.latestSession;
+  const automaticFixes = details.qa.fixes.filter((fix) => fix.automatic).length;
+  return (
+    <section className="panel action-panel">
+      <p className="eyebrow">{details.task.state === "FIXING" ? `Automatic fix cycle ${Math.min(automaticFixes + 1, 3)} / 3` : `QA cycle ${session?.cycleNumber ?? 1}`}</p>
+      <h2>{details.task.state === "FIXING" ? "Applying the complete failure batch" : "Running static, structural, and runtime QA"}</h2>
+      <p>UnityAI continues every test that can reasonably run and produces one batch report. No chain-of-thought is shown or stored.</p>
+      {session === undefined ? null : (
+        <>
+          <div className="result-grid qa-counts">
+            <div><small>Passed</small><strong>{session.summary.passed}</strong></div>
+            <div><small>Failed</small><strong>{session.summary.failed}</strong></div>
+            <div><small>Blocked</small><strong>{session.summary.blocked}</strong></div>
+            <div><small>Gameplay pending</small><strong>{session.summary.gameplayPending}</strong></div>
+          </div>
+          <div className="qa-test-list">
+            {session.plannedTests.map((test) => {
+              const stored = session.results.find((result) => result.testId === test.id)?.status;
+              const completed = [...details.progress.events].reverse().find((event) =>
+                event.type === "QA_TEST_COMPLETED" && event.metadata?.testId === test.id
+              )?.metadata?.status;
+              const started = details.progress.events.some((event) =>
+                event.type === "QA_TEST_STARTED" && event.metadata?.testId === test.id
+              );
+              const status = stored ?? completed ?? (started ? "RUNNING" : "PENDING");
+              return (
+                <div className="qa-test-row" key={test.id}>
+                  <span><strong>{test.id}</strong><small>{test.category}</small></span>
+                  <p>{test.description}</p>
+                  <em>{status}</em>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+      <div className="actions">
+        <button disabled={busy} type="button" onClick={onPause}>Pause safely</button>
+        <button disabled={busy} type="button" onClick={onCancel}>Cancel</button>
+      </div>
+    </section>
+  );
+}
+
+export function QAResultView({
+  details,
+  busy,
+  onFixAndRetest,
+  onPause,
+  onCancel,
+}: {
+  readonly details: TaskDetailsResponse;
+  readonly busy: boolean;
+  readonly onFixAndRetest: () => void;
+  readonly onPause: () => void;
+  readonly onCancel: () => void;
+}) {
+  const report = details.qa.latestReport;
+  const session = details.qa.latestSession;
+  if (report === undefined) {
+    return null;
+  }
+  const technical = report.outcome === "TECHNICAL_FAILURE";
+  return (
+    <section className="panel failure-card">
+      <p className="eyebrow">{technical ? "QA technical failure" : `QA failed · cycle ${report.cycleNumber}`}</p>
+      <h2>{technical ? "QA infrastructure stopped safely" : "Complete QA failure batch"}</h2>
+      <div className="result-grid qa-counts">
+        <div><small>Passed</small><strong>{report.summary.passed}</strong></div>
+        <div><small>Failed</small><strong>{report.summary.failed}</strong></div>
+        <div><small>Blocked</small><strong>{report.summary.blocked}</strong></div>
+        <div><small>Gameplay pending</small><strong>{report.summary.gameplayPending}</strong></div>
+      </div>
+      {details.qa.latestFailure === undefined ? null : (
+        <p className="important">{details.qa.latestFailure.code}: {details.qa.latestFailure.message}</p>
+      )}
+      <h3>Test results</h3>
+      <div className="qa-test-list">
+        {report.results.map((result) => (
+          <div className="qa-test-row" key={result.testId}>
+            <span><strong>{result.testId}</strong><small>{result.category}</small></span>
+            <p>{result.summary}</p>
+            <em>{result.status}</em>
+          </div>
+        ))}
+      </div>
+      {report.findings.map((finding) => (
+        <article className={`finding severity-${finding.severity}`} key={finding.id}>
+          <span>{finding.id} · {finding.source}</span>
+          <strong>{finding.title}</strong>
+          <p>{finding.description}</p>
+          <small>Expected: {finding.expected}</small>
+          <small>Observed: {finding.observed}</small>
+          <ul>
+            {finding.evidence.map((id) => {
+              const evidence = session?.evidence.find((entry) => entry.id === id);
+              return <li key={id}>{id}: {evidence?.summary ?? "Evidence artifact"}</li>;
+            })}
+          </ul>
+        </article>
+      ))}
+      <p className="notice">No stronger model was selected. The managed worktree, checkpoints, and evidence were preserved; no finalization, merge, or push occurred.</p>
+      <div className="actions wrap">
+        {report.manualFixAvailable && !technical ? (
+          <button className="primary" disabled={busy} type="button" onClick={onFixAndRetest}>Fix &amp; retest</button>
+        ) : null}
+        <button disabled={busy} type="button" onClick={onPause}>Pause</button>
+        <button disabled={busy} type="button" onClick={onCancel}>Cancel</button>
+      </div>
+    </section>
+  );
+}
+
+export function ReadyForGameplayQA({ details }: { readonly details: TaskDetailsResponse }) {
+  const session = details.qa.latestSession;
+  return (
+    <section className="panel ready-card">
+      <p className="eyebrow">Static / Structural / Runtime QA passed</p>
+      <h2>Ready for gameplay QA</h2>
+      <p className="important">{session?.summary.gameplayPending ?? 0} required player-level gameplay test(s) remain.</p>
+      <p>M8 player-like QA is required before task completion. This task has not been finalized, merged, or pushed.</p>
+      <div className="qa-test-list">
+        {(session?.results ?? []).filter((result) => result.category === "GAMEPLAY").map((result) => (
+          <div className="qa-test-row" key={result.testId}>
+            <span><strong>{result.testId}</strong><small>GAMEPLAY</small></span>
+            <p>{result.summary}</p>
+            <em>{result.status}</em>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+export function CompletedTask({ details }: { readonly details: TaskDetailsResponse }) {
+  const session = details.qa.latestSession;
+  return (
+    <section className="panel ready-card">
+      <p className="eyebrow">Task complete</p>
+      <h2>All required QA passed</h2>
+      <div className="result-grid">
+        <div><small>Task branch</small><strong>{details.git.environment?.taskBranch}</strong></div>
+        <div><small>Final commit</small><strong>{details.git.environment?.finalCommit}</strong></div>
+        <div><small>QA passed</small><strong>{session?.summary.passed ?? 0}</strong></div>
+        <div><small>Original project</small><strong>Untouched</strong></div>
+      </div>
+      <p className="notice">Merged: No · Pushed: No. Internal implementation/fix checkpoints were squashed into one local task commit.</p>
     </section>
   );
 }

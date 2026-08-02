@@ -13,11 +13,13 @@ namespace UnityAI.EditorBridge
     {
         private readonly string projectRoot;
         private readonly ConsoleReader console;
+        private readonly CompilationTracker compilation;
 
-        internal BridgeCommands(string projectRoot, ConsoleReader console)
+        internal BridgeCommands(string projectRoot, ConsoleReader console, CompilationTracker compilation)
         {
             this.projectRoot = projectRoot;
             this.console = console;
+            this.compilation = compilation;
         }
 
         internal object Execute(BridgeProtocol.Request request)
@@ -29,8 +31,9 @@ namespace UnityAI.EditorBridge
                 case "editor.status":
                     return Status();
                 case "editor.requestCompilation":
+                    var requestId = compilation.Begin();
                     CompilationPipeline.RequestScriptCompilation();
-                    return new BridgeProtocol.RequestedResult { requested = true };
+                    return new BridgeProtocol.RequestedResult { requested = true, requestId = requestId };
                 case "play.enter":
                     EditorApplication.EnterPlaymode();
                     return new BridgeProtocol.RequestedResult { requested = true };
@@ -65,7 +68,7 @@ namespace UnityAI.EditorBridge
             };
         }
 
-        private static BridgeProtocol.EditorStatusResult Status()
+        private BridgeProtocol.EditorStatusResult Status()
         {
             return new BridgeProtocol.EditorStatusResult
             {
@@ -74,7 +77,8 @@ namespace UnityAI.EditorBridge
                 isCompiling = EditorApplication.isCompiling,
                 isUpdating = EditorApplication.isUpdating,
                 activeScene = SceneManager.GetActiveScene().name ?? string.Empty,
-                activePlatform = EditorUserBuildSettings.activeBuildTarget.ToString()
+                activePlatform = EditorUserBuildSettings.activeBuildTarget.ToString(),
+                lastCompilation = compilation.Snapshot()
             };
         }
 

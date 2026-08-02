@@ -240,10 +240,51 @@ const executeBody = (workingDirectory: string, modelId: string) => ({
   input: "Return the configured JSON probe result.",
 });
 
+const assertNativeStrictSchema = (value: unknown, path = "schema"): void => {
+  assert.ok(
+    typeof value === "object" && value !== null && !Array.isArray(value),
+    `${path} must be a schema object.`,
+  );
+  const schema = value as Record<string, unknown>;
+  assert.ok(
+    typeof schema.type === "string" ||
+      Array.isArray(schema.type) ||
+      Array.isArray(schema.anyOf) ||
+      typeof schema.$ref === "string",
+    `${path} must declare type, anyOf, or $ref for native structured output.`,
+  );
+  if (schema.type === "object") {
+    assert.equal(schema.additionalProperties, false, `${path} must be closed.`);
+    assert.ok(
+      typeof schema.properties === "object" &&
+        schema.properties !== null &&
+        !Array.isArray(schema.properties),
+      `${path}.properties must be an object.`,
+    );
+    const properties = schema.properties as Record<string, unknown>;
+    assert.deepEqual(
+      new Set(schema.required as readonly string[]),
+      new Set(Object.keys(properties)),
+      `${path} must require every declared property for native structured output.`,
+    );
+    for (const [key, property] of Object.entries(properties)) {
+      assertNativeStrictSchema(property, `${path}.properties.${key}`);
+    }
+  }
+  if (schema.type === "array") {
+    assertNativeStrictSchema(schema.items, `${path}.items`);
+  }
+  if (Array.isArray(schema.anyOf)) {
+    schema.anyOf.forEach((entry, index) =>
+      assertNativeStrictSchema(entry, `${path}.anyOf[${index}]`),
+    );
+  }
+};
+
 test("repository agent, provider, model, and routing configuration load independently", async () => {
   const workspaceRoot = process.cwd();
   const agents = await AgentRegistry.load(join(workspaceRoot, "agents"));
-  assert.equal(agents.list().length, 6);
+  assert.equal(agents.list().length, 8);
   assert.equal(agents.get("m3-readonly-json").permission, "READ_ONLY");
   assert.equal(
     agents.get("m3-worktree-writer").permission,
@@ -253,6 +294,10 @@ test("repository agent, provider, model, and routing configuration load independ
   assert.equal(agents.get("feasibility").permission, "READ_ONLY");
   assert.equal(agents.get("implementation").permission, "WORKTREE_WRITE");
   assert.equal(agents.get("review").permission, "READ_ONLY");
+  assert.equal(agents.get("qa").permission, "READ_ONLY");
+  assert.equal(agents.get("fix").permission, "WORKTREE_WRITE");
+  assertNativeStrictSchema(agents.get("qa").expectedOutputSchema);
+  assertNativeStrictSchema(agents.get("fix").expectedOutputSchema);
 
   const models = await loadModelConfiguration(
     join(workspaceRoot, "config", "models.json"),
@@ -621,6 +666,57 @@ test("Codex and Claude command builders isolate provider flags and prompt stdin"
   assert.ok(claude.arguments.includes("--json-schema"));
   assert.ok(claude.arguments.includes("dontAsk"));
   assert.equal(claude.arguments.includes("--dangerously-skip-permissions"), false);
+});
+
+test("provider-independent Unity MCP configuration reaches Codex and Claude without leaking CLI syntax upward", () => {
+  const mcpServers = [{
+    id: "unity",
+    transport: "stdio" as const,
+    command: "node",
+    arguments: ["unity-mcp.js", "--projectPath", "C:\\managed\\TASK-0001"],
+    allowedTools: ["unity_ping", "unity_editor_status"],
+    startupTimeoutMs: 30_000,
+    toolTimeoutMs: 60_000,
+  }];
+  const baseRequest = {
+    agent: readOnlyAgent,
+    effort: "medium" as const,
+    workingDirectory: "C:\\managed\\TASK-0001",
+    prompt: "Use Unity evidence.",
+    expectedOutputSchema,
+    timeoutMs: 10_000,
+    mcpServers,
+  };
+  const codex = buildCodexCommand(
+    { executable: "codex", argumentPrefix: [] },
+    { ...baseRequest, model: createModel("codex-model", "codex", ["medium"]) },
+    { finalOutputPath: "final.json", schemaPath: "schema.json" },
+  );
+  assert.ok(codex.arguments.includes('mcp_servers.unity.command="node"'));
+  assert.ok(codex.arguments.includes('mcp_servers.unity.enabled_tools=["unity_ping","unity_editor_status"]'));
+  assert.ok(codex.arguments.includes('mcp_servers.unity.default_tools_approval_mode="approve"'));
+  assert.ok(codex.arguments.includes("--ignore-user-config"));
+
+  const claude = buildClaudeCommand(
+    { executable: "claude", argumentPrefix: [] },
+    { ...baseRequest, model: createModel("claude-model", "claude", ["medium"]) },
+  );
+  assert.ok(claude.arguments.includes("--mcp-config"));
+  assert.ok(claude.arguments.includes("--strict-mcp-config"));
+  assert.equal(claude.arguments.includes("--safe-mode"), false);
+  assert.ok(claude.arguments.includes("mcp__unity__unity_ping,mcp__unity__unity_editor_status") ||
+    claude.arguments.some((argument) => argument.includes("mcp__unity__unity_ping")));
+  const mcpJson = claude.arguments[claude.arguments.indexOf("--mcp-config") + 1];
+  assert.equal(typeof mcpJson, "string");
+  assert.deepEqual(JSON.parse(mcpJson ?? "{}"), {
+    mcpServers: {
+      unity: {
+        type: "stdio",
+        command: "node",
+        args: ["unity-mcp.js", "--projectPath", "C:\\managed\\TASK-0001"],
+      },
+    },
+  });
 });
 
 test("M3 HTTP endpoints expose discovery and explicit fake-provider execution", async () => {

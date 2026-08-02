@@ -165,7 +165,10 @@ export class UnityBridgeClient {
     return this.request("editor.status", {}, signal);
   }
 
-  requestCompilation(signal?: AbortSignal): Promise<{ readonly requested: boolean }> {
+  requestCompilation(signal?: AbortSignal): Promise<{
+    readonly requested: boolean;
+    readonly requestId?: string;
+  }> {
     return this.request("editor.requestCompilation", {}, signal);
   }
 
@@ -257,6 +260,10 @@ export class UnityBridgeClient {
       ), this.timeoutMs);
 
       signal?.addEventListener("abort", abort, { once: true });
+      if (signal?.aborted === true) {
+        abort();
+        return;
+      }
       socket = createConnection({
         host: descriptor.host,
         port: descriptor.port,

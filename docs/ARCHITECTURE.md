@@ -1,6 +1,6 @@
 # Architecture
 
-## Current M6 state
+## Current M7 state
 
 UnityAI remains a small npm workspace with six independently named workspaces:
 
@@ -8,14 +8,14 @@ UnityAI remains a small npm workspace with six independently named workspaces:
 apps/web       React + Vite local project/task workflow
 apps/server    Local HTTP server, JSON stores, orchestration, and concrete Git/AI/Unity lifecycle adapters
 apps/unity-mcp Focused MCP stdio facade over the shared Unity bridge client
-packages/core  Pure task/Git/agent/model/analysis/orchestration types, validation, and rules
+packages/core  Pure task/Git/agent/model/analysis/orchestration/QA types, validation, and rules
 packages/shared Shared HTTP contract types
 packages/unity Unity project metadata, Editor resolution, bridge protocol, client, and validation
 ```
 
-The browser provides project registration, task creation/history, analysis and blocked actions, Task Contract editing/approval, implementation start, polling progress, and implementation/review results. Vite proxies local API paths to the server. The server still uses Node's built-in HTTP module; no backend framework or database is present.
+The browser provides project registration, task creation/history, analysis and blocked actions, Task Contract editing/approval, implementation start, polling progress, implementation/review results, M7 QA/fix progress, batch reports, gameplay-pending status, and finalized commit details. Vite proxies local API paths to the server. The server still uses Node's built-in HTTP module; no backend framework or database is present.
 
-`packages/core` owns the `Task` entity, state rules/actions, feasibility and Task Contract schemas, pure Git environment metadata, agent definitions, model aliases, reasoning effort, and declarative routing schemas. M4 adds pure interpretation/feasibility schemas, preliminary and final strength classifiers, routing snapshot construction, and the deterministic Task Contract builder. It has no filesystem, child-process, or concrete Git/provider command dependency. Agent definitions contain behavior and access metadata but no model or provider invocation. Task JSON remains the task source of truth; event history is an audit aid, not event sourcing.
+`packages/core` owns the `Task` entity, state rules/actions, feasibility and Task Contract schemas, pure Git environment metadata, agent definitions, model aliases, reasoning effort, declarative routing schemas, and M7 QA session/result/finding/evidence/fix schemas. M4 adds pure interpretation/feasibility classifiers and deterministic planning; M7 adds explicit QA/fix transitions and validation without importing filesystem, child-process, concrete Git/provider, or Unity mechanics. Agent definitions contain behavior and access metadata but no model or provider invocation. Task JSON remains the task source of truth; event history is an audit aid, not event sourcing.
 
 `apps/server` owns the concrete task/Git stores and services. The native Git runner passes argument arrays directly to the installed `git` executable with no shell. Repository inspection resolves the selected external worktree, current branch, base commit, common Git directory, and machine-readable status. Data uses this layout:
 
@@ -23,6 +23,10 @@ The browser provides project registration, task creation/history, analysis and b
 runtime/tasks/TASK-0001/task.json
 runtime/tasks/TASK-0001/git.json
 runtime/tasks/TASK-0001/unity.json
+runtime/tasks/TASK-0001/qa/cycle-001/session.json
+runtime/tasks/TASK-0001/qa/cycle-001/report.json
+runtime/tasks/TASK-0001/qa/cycle-001/evidence/EVID-0001.json
+runtime/tasks/TASK-0001/fixes/fix-001/result.json
 runtime/tasks/TASK-0002/task.json
 runtime/worktrees/TASK-0001/
 ```
@@ -41,7 +45,7 @@ ModelDefinition -> stable alias, provider ID, provider model name, supported eff
 AIProvider      -> local external-system invocation
 ```
 
-`agents/*.json` contains the production Interpreter, Feasibility, Implementation, and Review definitions plus two small development probes. `config/models.json` contains replaceable model aliases and the documented routing table; `config/providers.json` contains CLI names, timeout, log bounds, and the native Windows Codex sandbox selection. `AgentExecutor` supports ordinary configured model resolution and exact execution from a persisted approved plan. It canonicalizes the working directory, assembles the provider-neutral request, invokes the provider, validates structured output with JSON Schema, and stores the normalized run.
+`agents/*.json` contains the production Interpreter, Feasibility, Implementation, Review, QA, and Fix definitions plus two small development probes. `config/models.json` contains replaceable model aliases and the documented routing table; `config/providers.json` contains CLI names, timeout, log bounds, and the native Windows Codex sandbox selection. `AgentExecutor` supports ordinary configured model resolution and exact execution from a persisted approved plan. It canonicalizes the working directory, assembles the provider-neutral request, invokes the provider, validates structured output with JSON Schema, and stores the normalized run. Internal callers may attach a validated provider-neutral stdio MCP configuration; its executable/arguments are never accepted by the development HTTP endpoint or persisted in run artifacts.
 
 The provider registry contains concrete Codex and Claude adapters. Both use a shared process runner with `shell: false`, executable/argument arrays, prompt stdin, bounded capture, timeout, AbortSignal cancellation, exit status, and spawn diagnostics. On Windows, startup resolves installed npm CLI wrappers to their native executable or safe Node entry point instead of passing prompts through `cmd.exe`. Provider-specific flags remain inside their adapter.
 
@@ -134,15 +138,35 @@ The reusable source package lives at `unity/Packages/com.unityai.editor-bridge`.
 
 Each Editor session binds an ephemeral port on `127.0.0.1`, generates a cryptographically random token, and writes its descriptor only under `Library/UnityAI/bridge-session.json`. The Node client validates protocol version, loopback host, port, process ID, and exact expected canonical project root before sending the token. Tokens are not copied to `unity.json` or task events. Requests and responses are bounded, time-limited, cancellable, and restricted to known methods. Network work is queued for execution through `EditorApplication.update`, so background listener threads do not manipulate Unity objects.
 
-The explicit bridge command surface is `bridge.ping`, `editor.status`, `editor.requestCompilation`, `play.enter`, `play.exit`, `play.setPaused`, `console.get`, `scene.summary`, `scene.hierarchy`, and `object.snapshot`. Console data is bounded and reports `complete: false` because M6 uses a public callback-backed partial log source. Scene/object inspection is read-only and bounded. There is no arbitrary C#, reflection, menu, filesystem, shell, process, asset, prefab, or scene-editing command.
+The explicit bridge command surface is `bridge.ping`, `editor.status`, `editor.requestCompilation`, `play.enter`, `play.exit`, `play.setPaused`, `console.get`, `scene.summary`, `scene.hierarchy`, and `object.snapshot`. General console data is bounded and truthfully reports `complete: false`. Bridge 0.2.0 uses public `CompilationPipeline` callbacks plus a bounded `Library/UnityAI` result to associate error/warning counts with one identified compilation across domain reload; `editor.status` exposes that result without expanding the command/MCP surface. Scene/object inspection is read-only and bounded. There is no arbitrary C#, reflection, menu, filesystem, shell, process, asset, prefab, or scene-editing command.
 
 `UnityEditorProcessManager` launches an argument array with `shell: false` and `-projectPath` set to the registered managed worktree. Stop is allowed only for a process UnityAI launched whose recorded project/session identity still matches; merely connected Editors are not owned. Restart revalidates persisted metadata and the current descriptor instead of trusting an old PID. `waitForUnityIdle` deterministically polls compilation/update state and tolerates the expected short bridge reconnect window caused by Unity domain reload.
 
-`apps/unity-mcp` uses the same `UnityBridgeClient` and exposes ten correspondingly focused stdio tools. It connects to one expected managed project per process and owns no installation, launch, task-state, QA, or pass/fail logic. M6 establishes Editor capabilities only: it does not run QA, inject input, capture screenshots, execute fixes, or decide acceptance.
+`apps/unity-mcp` uses the same `UnityBridgeClient` and exposes ten correspondingly focused stdio tools. It connects to one expected managed project per process and owns no installation, launch, task-state, QA, or pass/fail logic. M7 QA consumes this capability through the provider layer; the MCP server itself still does not decide acceptance, inject input, capture screenshots, or execute fixes.
 
-## Planned architecture
+M7 adds one deterministic `QAOrchestrator` above the existing services:
 
-The following boundaries guide later milestones. Only the M0-M6 portions described above are implemented.
+```text
+READY_FOR_QA -> TESTING
+  -> validate M2 worktree and M6 environment
+  -> deterministic diff + identified compilation preflight
+  -> bounded structural/runtime evidence and safe Play Mode lifecycle
+  -> QA Agent READ_ONLY with per-run Unity MCP
+  -> complete cycle report
+  -> FAILED -> FIXING -> bridge-free fix checkpoint -> TESTING (full rerun)
+  -> READY_FOR_GAMEPLAY_QA when required GAMEPLAY remains
+  -> owned tooling cleanup -> M2 squash -> COMPLETED otherwise
+```
+
+The QA Agent receives the approved contract, approved QA route, implementation/review context, current diff, deterministic evidence, and only the ten M6 Unity tools. Codex and Claude adapters translate the same internal MCP configuration; no provider-specific flag leaks into orchestration. Each planned STATIC, STRUCTURAL, or RUNTIME result is `PASS`, `FAIL`, `BLOCKED`, or `NOT_RUN`, with PASS/FAIL requiring persisted evidence. Compilation failure blocks dependent runtime work but leaves independent checks attemptable. General console completeness is preserved in evidence and never overstated.
+
+Ordinary defects are batched only after all reasonably executable tests finish. Automatic Fixes is the persisted boolean: `OFF` exposes one manual Fix & Retest action; `ON` invokes the Fix Agent after the full batch. Fix always uses the exact approved Implementation provider/model/effort, works only in the managed worktree, and cannot checkpoint while bridge tooling exists. Every fix starts a new full QA session; the internal automatic bound is three fix executions, with no retry escalation. Editor/provider/MCP/output failures are technical failures and never become fake code findings.
+
+Required GAMEPLAY checks are deterministically `NOT_RUN / REQUIRES_M8_GAMEPLAY_QA`. They lead to `READY_FOR_GAMEPLAY_QA`, never `COMPLETED` or Git finalization. A fully M7-verifiable PASS exits Play Mode, stops only an owned Editor, removes marker-verified bridge tooling, checks the final diff, invokes M2 one-commit squash, then transitions to `COMPLETED`. The task branch remains local; no code path merges or pushes, and the original worktree remains outside every write/fix/finalization operation.
+
+## Planned M8 architecture
+
+The following boundary guides M8. M0-M7 described above are implemented; player-like gameplay QA is not.
 
 ### Local application boundary
 
@@ -150,7 +174,7 @@ UnityAI runs as its own local application. A selected Unity game is an external 
 
 ### Web application
 
-The React application presents project selection, task drafting, contract approval, blocked-task actions, implementation progress, pre-QA results, and a small Unity tooling/status section. It sends commands over ordinary HTTP and polls progress. M7+ may extend it with QA evidence without changing the local application boundary.
+The React application presents project selection, task drafting, contract approval, blocked-task actions, implementation progress, Unity tooling, QA evidence/batches, gameplay-pending state, and completed commit details. It sends commands over ordinary HTTP and polls progress. M8 may extend it with player-level evidence without changing the local application boundary.
 
 ### Local server
 
@@ -158,7 +182,7 @@ The server will coordinate application use cases, persistence, process execution
 
 ### Core domain
 
-Core types and rules now describe tasks, lifecycle state, Task Contracts, feasibility results, and approval. Later milestones may add QA results and configuration-independent agent roles when required. Domain code does not import a concrete AI provider, Unity bridge, web framework, filesystem, or Git implementation.
+Core types and rules now describe tasks, lifecycle state, Task Contracts, feasibility, approval, QA sessions/results/evidence/findings, and fix results. Domain code does not import a concrete AI provider, Unity bridge, web framework, filesystem, or Git implementation.
 
 ### Agent, model, and provider boundary
 
@@ -166,7 +190,7 @@ An agent definition owns role, instructions, permissions, tools, context rules, 
 
 ### Target project adapters
 
-The filesystem/native-Git adapter inspects external repositories and safely modifies only verified managed task worktrees. The Unity adapter and reusable Unity-side bridge now expose bounded project structure, Editor state, Play Mode control, console data, and read-only scene/object snapshots. M2 records one task as the write owner. M7/M8 may consume these capabilities as evidence, but M6 does not interpret them as QA results.
+The filesystem/native-Git adapter inspects external repositories and safely modifies only verified managed task worktrees. The Unity adapter and reusable Unity-side bridge expose bounded project structure, compilation evidence, Editor state, Play Mode control, console data, and read-only scene/object snapshots. M2 records one task as the write owner. M7 consumes these capabilities for non-input QA; M8 may add player-input and visual evidence without adding arbitrary bridge execution.
 
 ### Persistence and configuration
 

@@ -22,19 +22,55 @@ const toolsFor = (request: ProviderExecutionRequest): string =>
     : "Read,Glob,Grep,Write,Edit,Bash";
 
 const allowedToolsFor = (request: ProviderExecutionRequest): string =>
-  request.agent.permission === "READ_ONLY"
-    ? "Read,Glob,Grep"
-    : "Read,Glob,Grep,Write,Edit";
+  [
+    ...(request.agent.permission === "READ_ONLY"
+      ? ["Read", "Glob", "Grep"]
+      : ["Read", "Glob", "Grep", "Write", "Edit"]),
+    ...(request.mcpServers ?? []).flatMap((server) =>
+      server.allowedTools.map((tool) => `mcp__${server.id}__${tool}`),
+    ),
+  ].join(",");
+
+const claudeMcpConfiguration = (
+  request: ProviderExecutionRequest,
+): string | undefined => {
+  if (request.mcpServers === undefined || request.mcpServers.length === 0) {
+    return undefined;
+  }
+  return JSON.stringify({
+    mcpServers: Object.fromEntries(request.mcpServers.map((server) => [
+      server.id,
+      {
+        type: "stdio",
+        command: server.command,
+        args: server.arguments,
+        ...(server.environment === undefined ? {} : { env: server.environment }),
+      },
+    ])),
+  });
+};
 
 export const buildClaudeCommand = (
   launch: ProviderLaunch,
   request: ProviderExecutionRequest,
-): ProviderCommand => ({
+): ProviderCommand => {
+  const mcpConfiguration = claudeMcpConfiguration(request);
+  return ({
   executable: launch.executable,
   arguments: [
     ...launch.argumentPrefix,
     "--print",
-    "--safe-mode",
+    ...(mcpConfiguration === undefined
+      ? ["--safe-mode"]
+      : [
+          "--setting-sources",
+          "",
+          "--strict-mcp-config",
+          "--mcp-config",
+          mcpConfiguration,
+          "--disable-slash-commands",
+          "--no-chrome",
+        ]),
     "--no-session-persistence",
     "--output-format",
     "json",
@@ -53,7 +89,8 @@ export const buildClaudeCommand = (
       : ["--json-schema", JSON.stringify(request.expectedOutputSchema)]),
   ],
   input: request.prompt,
-});
+  });
+};
 
 interface ClaudeEnvelope {
   readonly result?: string;
