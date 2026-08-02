@@ -1,0 +1,23 @@
+{
+  "name": "unityai",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Standalone local AI development orchestrator for Unity projects",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @unityai/shared && npm run build --workspace @unityai/core && npm run build --workspace @unityai/server && npm run build --workspace @unityai/web",
+    "typecheck": "npm run typecheck --workspace @unityai/shared && npm run typecheck --workspace @unityai/core && npm run typecheck --workspace @unityai/server && npm run typecheck --workspace @unityai/web",
+    "dev:server": "npm run dev --workspace @unityai/server",
+    "dev:web": "npm run dev --workspace @unityai/web"
+  },
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=10.0.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}
