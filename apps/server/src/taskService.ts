@@ -91,6 +91,10 @@ export class TaskService {
     return this.requireTask(parseTaskId(id));
   }
 
+  async saveTask(task: Task): Promise<Task> {
+    return this.store.save(task);
+  }
+
   async editDraft(id: string, value: unknown): Promise<Task> {
     const patch = parseDraftTaskPatch(value);
     return this.update(id, (task) => editTaskDraft(task, patch));

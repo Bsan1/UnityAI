@@ -1,19 +1,19 @@
 # Architecture
 
-## Current M3 state
+## Current M4 state
 
 M3 remains a small npm workspace with four independently named workspaces:
 
 ```text
 apps/web       React + Vite connectivity page
-apps/server    Local HTTP server, task/Git stores, AI execution infrastructure, and adapters
-packages/core  Pure task/Git/agent/model configuration types and validation
+apps/server    Local HTTP server, task/Git/analysis stores, orchestration, AI infrastructure, and adapters
+packages/core  Pure task/Git/agent/model/analysis types, validation, and deterministic rules
 packages/shared Shared HTTP contract types
 ```
 
 The browser still provides only the M0 connectivity page. During development, Vite proxies `/health` to the local server. The server uses Node's built-in HTTP module and exposes direct task commands. No backend framework or database is present.
 
-`packages/core` owns the `Task` entity, state rules/actions, feasibility and Task Contract schemas, pure Git environment metadata, agent definitions, model aliases, reasoning effort, and declarative routing schemas. It has no filesystem, child-process, or concrete Git/provider command dependency. Agent definitions contain behavior and access metadata but no model or provider invocation. Task JSON remains the task source of truth; event history is an audit aid, not event sourcing.
+`packages/core` owns the `Task` entity, state rules/actions, feasibility and Task Contract schemas, pure Git environment metadata, agent definitions, model aliases, reasoning effort, and declarative routing schemas. M4 adds pure interpretation/feasibility schemas, preliminary and final strength classifiers, routing snapshot construction, and the deterministic Task Contract builder. It has no filesystem, child-process, or concrete Git/provider command dependency. Agent definitions contain behavior and access metadata but no model or provider invocation. Task JSON remains the task source of truth; event history is an audit aid, not event sourcing.
 
 `apps/server` owns the concrete task/Git stores and services. The native Git runner passes argument arrays directly to the installed `git` executable with no shell. Repository inspection resolves the selected external worktree, current branch, base commit, common Git directory, and machine-readable status. Data uses this layout:
 
@@ -28,7 +28,7 @@ Preparation requires a clean original external worktree, then creates `ai/TASK-0
 
 Every destructive rollback, cleanup-discard, or task-branch history rewrite derives its target path from persisted metadata and verifies exact canonical managed path, task/write ownership, original-versus-managed separation, repository common directory, current task branch, and target repository identity. The original worktree is never reset or cleaned. Finalization rewrites only the dedicated task branch to one commit on its recorded base. Cleanup retains that branch. The layer contains no merge or push operation.
 
-`config/defaults.json` contains the two boolean defaults copied into new tasks. M1's supplied feasibility and contract endpoints are development mechanisms only. They do not claim that an agent ran. Recheck moves an eligible task to `ANALYZING`, clears its stale current analysis result, and records the request for M4.
+`config/defaults.json` contains the two boolean defaults copied into new tasks. M1's supplied feasibility and contract endpoints remain clearly separated development mechanisms only. The production `/tasks/:id/analyze` path now runs M4 analysis, while `/tasks/:id/recheck` performs current-target feasibility again.
 
 M3 adds three explicitly separate concepts:
 
@@ -55,11 +55,43 @@ runtime/ai/runs/RUN-<UUID>/stderr.log
 
 The request record omits raw input/context and stores only character counts and a digest. Provider environment/authentication is never serialized. Result and diagnostic text is redacted before persistence; stdout/stderr use a configured byte bound. The `/ai/execute` endpoint is development-only and accepts no executable or provider flags.
 
-This current structure deliberately does not connect task states to AI execution. It contains no interpretation, real feasibility, AI-generated Task Contract, task-strength routing execution, cross-review workflow, implementation/review/QA/fix orchestration, Unity connection, automatic merge/push, or production AI UI.
+M4 adds production `task-interpreter` and `feasibility` definitions. Both are provider/model-independent and `READ_ONLY`. A first analysis performs exactly two calls:
+
+```text
+CREATED -> ANALYZING
+  -> Interpreter (configured ALL route)
+  -> deterministic preliminary strength
+  -> Feasibility (configured preliminary-strength route, current target directory)
+  -> deterministic final strength
+  -> deterministic routing snapshot
+  -> deterministic Task Contract when READY
+  -> WAITING_FOR_APPROVAL or BLOCKED
+```
+
+The Interpreter does not inspect project files. Feasibility receives the interpretation and inspects only relevant current target files through the provider's read-only policy. M4 does not require a clean target: it observes the user's current state without stashing, cleaning, committing, installing, or preparing an M2 worktree. A bounded before/after source fingerprint, excluding Git and Unity-generated directories, detects practical read-only violations; UnityAI reports a failure and never performs destructive cleanup.
+
+Preliminary and final strength are explicit pure rules. Preliminary strength selects only the single Feasibility invocation. Final strength resolves a snapshot containing Implementation, QA, identical Fix, and optional configured Review plans. The task's persisted Cross Review and Automatic Fixes booleans control those plans. No route escalates after failure.
+
+Task Contracts merge Interpreter and Feasibility planning data in stable order, remove obvious duplicates, assign stable `AC-001`/`TEST-001` IDs, and retain evidence expectations plus relevant static, structural, runtime, or gameplay test categories. An unapproved contract can edit only user-facing planning fields. Strength, routing, run IDs, evidence, and approval timestamps cannot be patched. Approval persists the selected snapshot and transitions only to `READY_FOR_IMPLEMENTATION`.
+
+M4 analysis data uses:
+
+```text
+runtime/tasks/TASK-0001/task.json
+runtime/tasks/TASK-0001/analysis/interpretation.json
+runtime/tasks/TASK-0001/analysis/feasibility.json
+runtime/tasks/TASK-0001/analysis/routing.json
+runtime/tasks/TASK-0001/analysis/contract.json
+runtime/tasks/TASK-0001/analysis/failure.json  (only on technical failure)
+```
+
+Interpretation and feasibility records retain their global M3 `RUN-<UUID>` references; provider stdout/stderr remain only in bounded global execution artifacts. Analysis JSON is validated on read and written by temporary-file rename. One in-process task guard rejects simultaneous analysis mutation. A normal blocked recheck reuses valid interpretation, clears stale proposed planning, reruns Feasibility once against the current target, and rebuilds strength/routing/contract. Missing or invalid interpretation is the only reason recheck invokes Interpreter again.
+
+This current structure stops at contract approval and `READY_FOR_IMPLEMENTATION`. It contains no Git preparation triggered by approval, implementation/review/QA/fix execution, cross-review orchestration, dependency installation, Unity connection, automatic merge/push, or production task UI.
 
 ## Planned architecture
 
-The following boundaries guide later milestones. Only the M0-M3 portions described above are implemented.
+The following boundaries guide later milestones. Only the M0-M4 portions described above are implemented.
 
 ### Local application boundary
 
@@ -79,7 +111,7 @@ Core types and rules now describe tasks, lifecycle state, Task Contracts, feasib
 
 ### Agent, model, and provider boundary
 
-An agent definition owns role, instructions, permissions, tools, context rules, and expected output schema. Separately replaceable configuration defines provider/model/effort assignments for selected task strengths. M3 provider adapters translate explicit provider-neutral requests to Codex or Claude. M4 will consume routing records; changing a provider model name does not change agent behavior.
+An agent definition owns role, instructions, permissions, tools, context rules, and expected output schema. Separately replaceable configuration defines provider/model/effort assignments for selected task strengths. M3 provider adapters translate explicit provider-neutral requests to Codex or Claude. M4 consumes routing records without placing model IDs in agent definitions; changing a provider model name does not change agent behavior.
 
 ### Target project adapters
 

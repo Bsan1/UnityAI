@@ -1,0 +1,83 @@
+{
+  "schemaVersion": 1,
+  "id": "feasibility",
+  "displayName": "Feasibility Analyst",
+  "role": "Inspect the current target project and determine whether the interpreted task is honestly feasible",
+  "instructions": "Inspect only project files and metadata relevant to the supplied interpretation. Operate read-only and never modify files, Git state, dependencies, or configuration. Cite concise file/directory evidence without long excerpts. Distinguish extending an existing capability from depending on missing reusable architecture. Never hide missing architecture with a one-off workaround. Use AUTO_FIXABLE only for a simple approved dependency; never for missing architecture or arbitrary third-party frameworks. Use BLOCKED_USER only for a material unresolved product decision. Return only the structured result.",
+  "permission": "READ_ONLY",
+  "toolPolicy": "READ_ONLY_TOOLS",
+  "contextPolicy": {
+    "includeRepositoryInstructions": true,
+    "maximumInputCharacters": 250000
+  },
+  "expectedOutputSchema": {
+    "type": "object",
+    "properties": {
+      "status": { "type": "string", "enum": ["READY", "AUTO_FIXABLE", "BLOCKED_ARCHITECTURE", "BLOCKED_USER"] },
+      "summary": { "type": "string", "minLength": 1 },
+      "evidence": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "location": { "type": "string", "minLength": 1 },
+            "observation": { "type": "string", "minLength": 1 }
+          },
+          "required": ["location", "observation"],
+          "additionalProperties": false
+        }
+      },
+      "existingCapabilities": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+      "missingCapabilities": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+      "autoFixableDependencies": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+      "suggestedPrerequisite": {
+        "anyOf": [
+          { "type": "null" },
+          {
+            "type": "object",
+            "properties": {
+              "title": { "type": "string", "minLength": 1 },
+              "request": { "type": "string", "minLength": 1 }
+            },
+            "required": ["title", "request"],
+            "additionalProperties": false
+          }
+        ]
+      },
+      "systemsAffected": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+      "architectureImpact": { "type": "string", "enum": ["low", "medium", "high"] },
+      "implementationComplexity": { "type": "string", "enum": ["low", "medium", "high"] },
+      "regressionRisk": { "type": "string", "enum": ["low", "medium", "high"] },
+      "ambiguity": { "type": "string", "enum": ["low", "medium", "high"] },
+      "createsReusableCoreSystem": { "type": "boolean" },
+      "proposedImplementationScope": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+      "proposedNonGoals": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+      "acceptanceCriteriaAdditions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "description": { "type": "string", "minLength": 1 },
+            "evidenceExpectation": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          },
+          "required": ["description", "evidenceExpectation"],
+          "additionalProperties": false
+        }
+      },
+      "testRequirementAdditions": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "category": { "type": "string", "enum": ["STATIC", "STRUCTURAL", "RUNTIME", "GAMEPLAY"] },
+            "description": { "type": "string", "minLength": 1 }
+          },
+          "required": ["category", "description"],
+          "additionalProperties": false
+        }
+      }
+    },
+    "required": ["status", "summary", "evidence", "existingCapabilities", "missingCapabilities", "autoFixableDependencies", "suggestedPrerequisite", "systemsAffected", "architectureImpact", "implementationComplexity", "regressionRisk", "ambiguity", "createsReusableCoreSystem", "proposedImplementationScope", "proposedNonGoals", "acceptanceCriteriaAdditions", "testRequirementAdditions"],
+    "additionalProperties": false
+  }
+}

@@ -51,6 +51,8 @@ When feasibility blocks a task, the eventual user actions are:
 - **QA2:** runtime interaction testing in Unity Play Mode.
 - **QA3:** player-like validation of the requested gameplay behavior.
 
-## Current M3 scope
+## Current M4 scope
 
-M1 establishes the task entity, state pipeline, schemas, history, and JSON persistence. M2 adds conservative inspection and isolated local Git task environments for external targets. M3 adds independently configured agents, model aliases, and Codex/Claude CLI providers behind a common explicit executor, plus structured-output validation and bounded run artifacts. This execution capability is development-only and is not connected to task analysis or implementation. No real interpretation, feasibility, Task Contract generation, task-strength model selection, cross-review workflow, implementation workflow, Unity connection, or QA execution exists yet. See [ROADMAP.md](ROADMAP.md) for staged delivery.
+M1 establishes the task entity, state pipeline, schemas, history, and JSON persistence. M2 adds conservative inspection and isolated local Git task environments for external targets. M3 adds independently configured agents, model aliases, and Codex/Claude CLI providers behind a common explicit executor. M4 connects that executor to real read-only task interpretation and current-project feasibility analysis. Deterministic application code selects task strength, snapshots future model routing, and constructs an editable, evidence-oriented Task Contract for approval. Blocked recheck reuses a valid interpretation and inspects the current target again.
+
+M4 stops at `READY_FOR_IMPLEMENTATION` after approval. It does not prepare a Git implementation worktree, modify the target, run an implementation/review/QA/fix workflow, install dependencies, connect to Unity, or provide the production task UI. See [ROADMAP.md](ROADMAP.md) for staged delivery.

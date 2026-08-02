@@ -1,5 +1,12 @@
 import { TaskDomainError } from "./errors.js";
 import {
+  parseAcceptanceCriterion,
+  parseExecutionRoutingSnapshot,
+  parsePlannedTestRequirement,
+  parseTaskAnalysisFailure,
+  parseTaskAnalysisSummary,
+} from "./analysisValidation.js";
+import {
   FEASIBILITY_STATUSES,
   TASK_EVENT_TYPES,
   TASK_STATES,
@@ -14,6 +21,7 @@ import type {
   Task,
   TaskContract,
   TaskContractInput,
+  TaskContractPatch,
   TaskEvent,
   TaskId,
   TaskSettings,
@@ -166,7 +174,10 @@ export const parseCreateTaskInput = (value: unknown): CreateTaskInput => {
   const record = readRecord(value, "task input");
   const strength = record.strength;
 
-  if (typeof strength !== "string" || !taskStrengthSet.has(strength)) {
+  if (
+    strength !== undefined &&
+    (typeof strength !== "string" || !taskStrengthSet.has(strength))
+  ) {
     return invalid(
       "task input.strength must be LIGHT, STANDARD, or STRONG.",
     );
@@ -193,7 +204,9 @@ export const parseCreateTaskInput = (value: unknown): CreateTaskInput => {
       record.originalRequest,
       "task input.originalRequest",
     ),
-    strength: strength as CreateTaskInput["strength"],
+    ...(strength === undefined
+      ? {}
+      : { strength: strength as NonNullable<CreateTaskInput["strength"]> }),
     ...(title === undefined ? {} : { title }),
     ...(targetProjectPath === undefined ? {} : { targetProjectPath }),
     ...(crossReviewEnabled === undefined ? {} : { crossReviewEnabled }),
@@ -240,7 +253,9 @@ export const parseDraftTaskPatch = (value: unknown): DraftTaskPatch => {
         "draft patch.strength must be LIGHT, STANDARD, or STRONG.",
       );
     }
-    patch.strength = record.strength as CreateTaskInput["strength"];
+    patch.strength = record.strength as NonNullable<
+      CreateTaskInput["strength"]
+    >;
   }
 
   if (hasOwn(record, "crossReviewEnabled")) {
@@ -306,7 +321,114 @@ export const parseTaskContractInput = (
     ? readStringArray(record.nonGoals, "task contract.nonGoals")
     : undefined;
 
+  const originalTaskSummary = readOptionalString(
+    record,
+    "originalTaskSummary",
+    "task contract",
+  );
+  const taskStrength = hasOwn(record, "taskStrength")
+    ? (() => {
+        if (
+          typeof record.taskStrength !== "string" ||
+          !taskStrengthSet.has(record.taskStrength)
+        ) {
+          return invalid(
+            "task contract.taskStrength must be LIGHT, STANDARD, or STRONG.",
+          );
+        }
+        return record.taskStrength as TaskContractInput["taskStrength"];
+      })()
+    : undefined;
+  const executionPlan = hasOwn(record, "executionPlan")
+    ? parseExecutionRoutingSnapshot(record.executionPlan)
+    : undefined;
+  const criteriaDetails = hasOwn(record, "acceptanceCriteriaDetails")
+    ? (() => {
+        if (!Array.isArray(record.acceptanceCriteriaDetails)) {
+          return invalid(
+            "task contract.acceptanceCriteriaDetails must be an array.",
+          );
+        }
+        return record.acceptanceCriteriaDetails.map((entry, index) =>
+          parseAcceptanceCriterion(
+            entry,
+            `task contract.acceptanceCriteriaDetails[${index}]`,
+          ),
+        );
+      })()
+    : undefined;
+  const testDetails = hasOwn(record, "testRequirementDetails")
+    ? (() => {
+        if (!Array.isArray(record.testRequirementDetails)) {
+          return invalid(
+            "task contract.testRequirementDetails must be an array.",
+          );
+        }
+        return record.testRequirementDetails.map((entry, index) =>
+          parsePlannedTestRequirement(
+            entry,
+            `task contract.testRequirementDetails[${index}]`,
+          ),
+        );
+      })()
+    : undefined;
+  const acceptanceCriteria = readStringArray(
+    record.acceptanceCriteria,
+    "task contract.acceptanceCriteria",
+  );
+  const testRequirements = readStringArray(
+    record.testRequirements,
+    "task contract.testRequirements",
+  );
+
+  if ((taskStrength === undefined) !== (executionPlan === undefined)) {
+    return invalid(
+      "task contract taskStrength and executionPlan must be provided together.",
+    );
+  }
+  if (taskStrength !== undefined && taskStrength !== executionPlan?.taskStrength) {
+    return invalid(
+      "task contract task strength must match its execution plan.",
+    );
+  }
+  if (
+    criteriaDetails !== undefined &&
+    new Set(criteriaDetails.map((criterion) => criterion.id)).size !==
+      criteriaDetails.length
+  ) {
+    return invalid("task contract acceptance criterion IDs must be unique.");
+  }
+  if (
+    testDetails !== undefined &&
+    new Set(testDetails.map((requirement) => requirement.id)).size !==
+      testDetails.length
+  ) {
+    return invalid("task contract test requirement IDs must be unique.");
+  }
+  if (
+    criteriaDetails !== undefined &&
+    JSON.stringify(criteriaDetails.map((criterion) => criterion.description)) !==
+      JSON.stringify(acceptanceCriteria)
+  ) {
+    return invalid(
+      "task contract acceptanceCriteria must match acceptanceCriteriaDetails.",
+    );
+  }
+  if (
+    testDetails !== undefined &&
+    JSON.stringify(
+      testDetails.map(
+        (requirement) => `${requirement.category}: ${requirement.description}`,
+      ),
+    ) !== JSON.stringify(testRequirements)
+  ) {
+    return invalid(
+      "task contract testRequirements must match testRequirementDetails.",
+    );
+  }
+
   return {
+    ...(originalTaskSummary === undefined ? {} : { originalTaskSummary }),
     understoodExplicitRequirements: readStringArray(
       record.understoodExplicitRequirements,
       "task contract.understoodExplicitRequirements",
@@ -324,18 +446,20 @@ export const parseTaskContractInput = (
       "task contract.implementationScope",
     ),
     ...(nonGoals === undefined ? {} : { nonGoals }),
-    acceptanceCriteria: readStringArray(
-      record.acceptanceCriteria,
-      "task contract.acceptanceCriteria",
-    ),
-    testRequirements: readStringArray(
-      record.testRequirements,
-      "task contract.testRequirements",
-    ),
+    acceptanceCriteria,
+    testRequirements,
+    ...(taskStrength === undefined ? {} : { taskStrength }),
+    ...(executionPlan === undefined ? {} : { executionPlan }),
+    ...(criteriaDetails === undefined
+      ? {}
+      : { acceptanceCriteriaDetails: criteriaDetails }),
+    ...(testDetails === undefined
+      ? {}
+      : { testRequirementDetails: testDetails }),
   };
 };
 
-const parseTaskContract = (value: unknown): TaskContract => {
+export const parseTaskContract = (value: unknown): TaskContract => {
   const record = readRecord(value, "task.taskContract");
   const input = parseTaskContractInput(record);
   const approved = readBoolean(record.approved, "task.taskContract.approved");
@@ -360,6 +484,75 @@ const parseTaskContract = (value: unknown): TaskContract => {
       ? {}
       : { approvedAt: readTimestamp(approvedAt, "task.taskContract.approvedAt") }),
   };
+};
+
+export const parseTaskContractPatch = (
+  value: unknown,
+): TaskContractPatch => {
+  const record = readRecord(value, "task contract patch");
+  const allowed = new Set([
+    "understoodExplicitRequirements",
+    "inferredRequirements",
+    "prerequisites",
+    "implementationScope",
+    "nonGoals",
+    "acceptanceCriteriaDetails",
+    "testRequirementDetails",
+  ]);
+  for (const key of Object.keys(record)) {
+    if (!allowed.has(key)) {
+      return invalid(`task contract patch.${key} is not editable.`);
+    }
+  }
+  const patch: {
+    -readonly [Key in keyof TaskContractPatch]: TaskContractPatch[Key];
+  } = {};
+  for (const field of [
+    "understoodExplicitRequirements",
+    "inferredRequirements",
+    "prerequisites",
+    "implementationScope",
+    "nonGoals",
+  ] as const) {
+    if (hasOwn(record, field)) {
+      patch[field] = readStringArray(
+        record[field],
+        `task contract patch.${field}`,
+      );
+    }
+  }
+  if (hasOwn(record, "acceptanceCriteriaDetails")) {
+    if (!Array.isArray(record.acceptanceCriteriaDetails)) {
+      return invalid(
+        "task contract patch.acceptanceCriteriaDetails must be an array.",
+      );
+    }
+    patch.acceptanceCriteriaDetails = record.acceptanceCriteriaDetails.map(
+      (entry, index) =>
+        parseAcceptanceCriterion(
+          entry,
+          `task contract patch.acceptanceCriteriaDetails[${index}]`,
+        ),
+    );
+  }
+  if (hasOwn(record, "testRequirementDetails")) {
+    if (!Array.isArray(record.testRequirementDetails)) {
+      return invalid(
+        "task contract patch.testRequirementDetails must be an array.",
+      );
+    }
+    patch.testRequirementDetails = record.testRequirementDetails.map(
+      (entry, index) =>
+        parsePlannedTestRequirement(
+          entry,
+          `task contract patch.testRequirementDetails[${index}]`,
+        ),
+    );
+  }
+  if (Object.keys(patch).length === 0) {
+    return invalid("task contract patch must contain an editable field.");
+  }
+  return patch;
 };
 
 const parsePauseInfo = (value: unknown): PauseInfo => {
@@ -435,6 +628,7 @@ const validateTaskInvariants = (task: Task): void => {
 
   if (
     effectiveState === "BLOCKED" &&
+    feasibilityStatus !== "AUTO_FIXABLE" &&
     feasibilityStatus !== "BLOCKED_ARCHITECTURE" &&
     feasibilityStatus !== "BLOCKED_USER"
   ) {
@@ -443,22 +637,44 @@ const validateTaskInvariants = (task: Task): void => {
 
   if (
     effectiveState === "WAITING_FOR_APPROVAL" &&
-    feasibilityStatus !== "READY" &&
-    feasibilityStatus !== "AUTO_FIXABLE"
+    feasibilityStatus !== "READY"
   ) {
     invalid(
       "A task waiting for approval must have a ready feasibility result.",
     );
   }
 
+  const isAnalysisFailure =
+    effectiveState === "FAILED" && task.analysisFailure !== undefined;
   if (
     effectiveState !== undefined &&
     implementationStates.has(effectiveState) &&
+    !isAnalysisFailure &&
     task.taskContract?.approved !== true
   ) {
     invalid(
       `Task state ${effectiveState} requires an approved Task Contract.`,
     );
+  }
+
+  if (task.analysisFailure !== undefined && task.state !== "FAILED") {
+    invalid("Only a failed task may retain an analysis failure.");
+  }
+  if (task.analysis !== undefined) {
+    if (task.analysis.finalStrength !== task.strength) {
+      invalid("task.analysis.finalStrength must match task.strength.");
+    }
+    if (
+      task.analysis.routingSnapshot.taskStrength !== task.analysis.finalStrength
+    ) {
+      invalid("task analysis strength must match its routing snapshot.");
+    }
+  }
+  if (
+    task.taskContract?.taskStrength !== undefined &&
+    task.taskContract.taskStrength !== task.strength
+  ) {
+    invalid("Task Contract strength must match task.strength.");
   }
 
   if (task.originTaskId === task.id) {
@@ -494,6 +710,12 @@ export const parseTask = (value: unknown): Task => {
     : undefined;
   const taskContract = hasOwn(record, "taskContract")
     ? parseTaskContract(record.taskContract)
+    : undefined;
+  const analysis = hasOwn(record, "analysis")
+    ? parseTaskAnalysisSummary(record.analysis)
+    : undefined;
+  const analysisFailure = hasOwn(record, "analysisFailure")
+    ? parseTaskAnalysisFailure(record.analysisFailure)
     : undefined;
   const pause = hasOwn(record, "pause")
     ? parsePauseInfo(record.pause)
@@ -533,6 +755,8 @@ export const parseTask = (value: unknown): Task => {
     ),
     ...(feasibility === undefined ? {} : { feasibility }),
     ...(taskContract === undefined ? {} : { taskContract }),
+    ...(analysis === undefined ? {} : { analysis }),
+    ...(analysisFailure === undefined ? {} : { analysisFailure }),
     ...(pause === undefined ? {} : { pause }),
     ...(cancellation === undefined ? {} : { cancellation }),
     ...(originTaskId === undefined ? {} : { originTaskId }),

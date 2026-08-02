@@ -1,6 +1,6 @@
 # Roadmap
 
-**M3 - AI Provider and Agent Abstraction is complete. M4 - Analysis, Feasibility and Task Contract Pipeline is next.** Milestones describe bounded increments; completing one does not authorize implementation of the next.
+**M4 - Analysis, Feasibility and Task Contract Pipeline is complete. M5 - Basic User Interface and End-to-End Orchestrator Flow is next.** Milestones describe bounded increments; completing one does not authorize implementation of the next.
 
 ## M0 - Foundation (completed)
 
@@ -42,15 +42,15 @@
 
 **Completion criteria:** The same test agent runs through two providers without definition changes; configured models resolve providers and all documented routes validate; CLI arguments remain adapter-local; structured success/failure, provider/process failures, timeout/cancellation, log bounding/redaction, and artifacts are deterministic; available local providers pass one minimal read-only smoke; no task pipeline or runtime escalation exists.
 
-## M4 - Analysis, Feasibility and Task Contract Pipeline (next)
+## M4 - Analysis, Feasibility and Task Contract Pipeline (completed)
 
 **Goal:** Turn a user request and current target state into an honest, reviewable Task Contract.
 
-**Major deliverables:** Interpretation; target inspection inputs; feasibility and prerequisite classification; contract generation; explicit approval gate; editable prerequisite drafts; pause, recheck, and cancel behavior.
+**Major deliverables:** Production read-only Interpreter and Feasibility agents; two-call first analysis; deterministic preliminary/final strength; configured feasibility selection; persisted routing snapshot; deterministic evidence-oriented Task Contract; editable unapproved planning content; technical failure records; per-task concurrency guard; current-target read-only verification; one-call feasibility recheck; existing prerequisite, pause, and cancel behavior.
 
-**Explicit non-goals:** General implementation execution, polished UI, Unity runtime bridge, automatic fixes, and player-level QA.
+**Explicit non-goals:** Git environment preparation after approval; implementation/review/QA/fix execution; cross-review orchestration; dependency installation; polished UI; Unity runtime bridge; automatic fixes; and player-level QA.
 
-**Completion criteria:** Implementation cannot begin without approval; missing architecture is reported rather than bypassed; recheck reads current state; blocked actions preserve intended task state.
+**Completion criteria:** First analysis runs Interpreter then Feasibility without a contract-generator call; current target evidence and missing architecture determine `WAITING_FOR_APPROVAL` or `BLOCKED`; deterministic strength/routing/contract artifacts persist and reload; approval alone unlocks implementation readiness; recheck reads current state while reusing valid interpretation; technical failures remain failures; read-only and concurrency invariants are tested.
 
 ## M5 - Basic User Interface and End-to-End Orchestrator Flow
 

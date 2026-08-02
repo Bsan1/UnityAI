@@ -1,0 +1,79 @@
+{
+  "schemaVersion": 1,
+  "id": "task-interpreter",
+  "displayName": "Task Interpreter",
+  "role": "Interpret a development request into explicit, inferred, and testable planning facts",
+  "instructions": "Interpret only the supplied task. Preserve user-provided values and distinguish explicit requirements from low-risk necessary inferences. Do not invent major features or architecture. Mark an ambiguity blocking only when proceeding requires a material product or design decision. Do not inspect or modify project files; feasibility performs repository inspection. Return only the structured result.",
+  "permission": "READ_ONLY",
+  "toolPolicy": "READ_ONLY_TOOLS",
+  "contextPolicy": {
+    "includeRepositoryInstructions": false,
+    "maximumInputCharacters": 100000
+  },
+  "expectedOutputSchema": {
+    "type": "object",
+    "properties": {
+      "title": { "type": "string", "minLength": 1 },
+      "summary": { "type": "string", "minLength": 1 },
+      "explicitRequirements": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+      "inferredRequirements": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+      "constraints": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+      "explicitNonGoals": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+      "ambiguities": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "description": { "type": "string", "minLength": 1 },
+            "blocking": { "type": "boolean" }
+          },
+          "required": ["description", "blocking"],
+          "additionalProperties": false
+        }
+      },
+      "acceptanceCriteriaDraft": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "description": { "type": "string", "minLength": 1 },
+            "evidenceExpectation": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          },
+          "required": ["description", "evidenceExpectation"],
+          "additionalProperties": false
+        }
+      },
+      "testRequirementsDraft": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "properties": {
+            "category": { "type": "string", "enum": ["STATIC", "STRUCTURAL", "RUNTIME", "GAMEPLAY"] },
+            "description": { "type": "string", "minLength": 1 }
+          },
+          "required": ["category", "description"],
+          "additionalProperties": false
+        }
+      },
+      "riskSignals": {
+        "type": "object",
+        "properties": {
+          "newReusableCoreSystem": { "type": "boolean" },
+          "multiSystemIntegration": { "type": "boolean" },
+          "networkingOrMultiplayer": { "type": "boolean" },
+          "persistenceOrSaveArchitecture": { "type": "boolean" },
+          "editorTooling": { "type": "boolean" },
+          "potentiallyDestructiveDataChange": { "type": "boolean" },
+          "likelyArchitectureImpact": { "type": "boolean" },
+          "majorFrameworkOrSystemReplacement": { "type": "boolean" },
+          "highRegressionRisk": { "type": "boolean" },
+          "estimatedSystemsAffected": { "type": "integer", "minimum": 0, "maximum": 100 }
+        },
+        "required": ["newReusableCoreSystem", "multiSystemIntegration", "networkingOrMultiplayer", "persistenceOrSaveArchitecture", "editorTooling", "potentiallyDestructiveDataChange", "likelyArchitectureImpact", "majorFrameworkOrSystemReplacement", "highRegressionRisk", "estimatedSystemsAffected"],
+        "additionalProperties": false
+      }
+    },
+    "required": ["title", "summary", "explicitRequirements", "inferredRequirements", "constraints", "explicitNonGoals", "ambiguities", "acceptanceCriteriaDraft", "testRequirementsDraft", "riskSignals"],
+    "additionalProperties": false
+  }
+}

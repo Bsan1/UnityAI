@@ -1,5 +1,13 @@
 import { TaskDomainError } from "./errors.js";
 import type {
+  TaskAnalysisFailure,
+  TaskAnalysisSummary,
+} from "./analysisTypes.js";
+import {
+  parseTaskAnalysisFailure,
+  parseTaskAnalysisSummary,
+} from "./analysisValidation.js";
+import type {
   CreateTaskInput,
   DraftTaskPatch,
   FeasibilityResult,
@@ -7,6 +15,7 @@ import type {
   Task,
   TaskContract,
   TaskContractInput,
+  TaskContractPatch,
   TaskEvent,
   TaskEventType,
   TaskId,
@@ -19,6 +28,7 @@ import {
   parseFeasibilityResult,
   parseTask,
   parseTaskContractInput,
+  parseTaskContractPatch,
   parseTaskId,
   parseTaskSettings,
 } from "./taskValidation.js";
@@ -26,7 +36,7 @@ import {
 const transitions: Readonly<Record<TaskState, readonly TaskState[]>> = {
   DRAFT: ["CREATED"],
   CREATED: ["ANALYZING"],
-  ANALYZING: ["WAITING_FOR_APPROVAL", "BLOCKED"],
+  ANALYZING: ["WAITING_FOR_APPROVAL", "BLOCKED", "FAILED"],
   WAITING_FOR_APPROVAL: ["READY_FOR_IMPLEMENTATION"],
   BLOCKED: [],
   PAUSED: [],
@@ -100,8 +110,7 @@ const assertTransitionInvariants = (
 ): void => {
   if (task.state === "ANALYZING" && targetState === "WAITING_FOR_APPROVAL") {
     if (
-      task.feasibility?.status !== "READY" &&
-      task.feasibility?.status !== "AUTO_FIXABLE"
+      task.feasibility?.status !== "READY"
     ) {
       throw new TaskDomainError(
         "INVALID_TRANSITION",
@@ -113,7 +122,8 @@ const assertTransitionInvariants = (
   if (task.state === "ANALYZING" && targetState === "BLOCKED") {
     if (
       task.feasibility?.status !== "BLOCKED_ARCHITECTURE" &&
-      task.feasibility?.status !== "BLOCKED_USER"
+      task.feasibility?.status !== "BLOCKED_USER" &&
+      task.feasibility?.status !== "AUTO_FIXABLE"
     ) {
       throw new TaskDomainError(
         "INVALID_TRANSITION",
@@ -188,7 +198,7 @@ export const createTask = (
     ...(validInput.targetProjectPath === undefined
       ? {}
       : { targetProjectPath: validInput.targetProjectPath }),
-    strength: validInput.strength,
+    strength: validInput.strength ?? "STANDARD",
     state: "CREATED",
     createdAt: timestamp,
     updatedAt: timestamp,
@@ -222,7 +232,28 @@ export const submitTaskDraft = (
 export const beginTaskAnalysis = (
   task: Task,
   timestamp = nowTimestamp(),
-): Task => applyTransition(parseTask(task), "ANALYZING", timestamp);
+): Task => {
+  const current = parseTask(task);
+  if (current.state !== "FAILED") {
+    return applyTransition(current, "ANALYZING", timestamp);
+  }
+  if (current.analysisFailure === undefined) {
+    return invalidTransition(current, "ANALYZING");
+  }
+  const { analysisFailure: _analysisFailure, ...withoutFailure } = current;
+  return parseTask({
+    ...withoutFailure,
+    state: "ANALYZING",
+    updatedAt: timestamp,
+    events: [
+      ...current.events,
+      event("STATE_CHANGED", timestamp, {
+        from: "FAILED",
+        to: "ANALYZING",
+      }),
+    ],
+  });
+};
 
 export const recordFeasibilityResult = (
   task: Task,
@@ -234,7 +265,7 @@ export const recordFeasibilityResult = (
   const feasibility = parseFeasibilityResult(result);
   const withFeasibility = parseTask({ ...current, feasibility });
   const nextState: TaskState =
-    feasibility.status === "READY" || feasibility.status === "AUTO_FIXABLE"
+    feasibility.status === "READY"
       ? "WAITING_FOR_APPROVAL"
       : "BLOCKED";
 
@@ -244,6 +275,106 @@ export const recordFeasibilityResult = (
       source: "supplied_m1_result",
     }),
   ]);
+};
+
+export interface CompleteTaskAnalysisInput {
+  readonly title?: string;
+  readonly feasibility: FeasibilityResult;
+  readonly taskContract?: TaskContractInput;
+  readonly analysis: TaskAnalysisSummary;
+}
+
+export const completeTaskAnalysis = (
+  task: Task,
+  input: CompleteTaskAnalysisInput,
+  timestamp = nowTimestamp(),
+): Task => {
+  const current = parseTask(task);
+  requireState(current, "ANALYZING");
+  const feasibility = parseFeasibilityResult(input.feasibility);
+  const analysis = parseTaskAnalysisSummary(input.analysis);
+  const ready = feasibility.status === "READY";
+  if (ready !== (input.taskContract !== undefined)) {
+    throw new TaskDomainError(
+      "VALIDATION_ERROR",
+      ready
+        ? "READY analysis requires a Task Contract."
+        : "Blocked analysis must not fabricate a Task Contract.",
+    );
+  }
+  const contractInput = input.taskContract === undefined
+    ? undefined
+    : parseTaskContractInput(input.taskContract);
+  if (
+    contractInput?.taskStrength !== undefined &&
+    contractInput.taskStrength !== analysis.finalStrength
+  ) {
+    throw new TaskDomainError(
+      "VALIDATION_ERROR",
+      "Analysis and Task Contract strengths must match.",
+    );
+  }
+  const withResult = parseTask({
+    ...current,
+    ...(input.title === undefined || current.title !== undefined
+      ? {}
+      : { title: input.title }),
+    strength: analysis.finalStrength,
+    feasibility,
+    analysis,
+    ...(contractInput === undefined
+      ? {}
+      : {
+          taskContract: {
+            ...contractInput,
+            nonGoals: contractInput.nonGoals ?? [],
+            approved: false,
+          },
+        }),
+  });
+  const nextState: TaskState = ready ? "WAITING_FOR_APPROVAL" : "BLOCKED";
+  const precedingEvents: TaskEvent[] = [
+    event("FEASIBILITY_RECORDED", timestamp, {
+      status: feasibility.status,
+      source: "ai_m4_analysis",
+      runId: analysis.feasibilityRunId,
+    }),
+    ...(contractInput === undefined
+      ? []
+      : [event("CONTRACT_STORED", timestamp, { source: "m4_builder" })]),
+    event("ANALYSIS_COMPLETED", timestamp, {
+      preliminaryStrength: analysis.preliminaryStrength,
+      finalStrength: analysis.finalStrength,
+    }),
+  ];
+  return applyTransition(withResult, nextState, timestamp, precedingEvents);
+};
+
+export const failTaskAnalysis = (
+  task: Task,
+  failureInput: TaskAnalysisFailure,
+  timestamp = nowTimestamp(),
+): Task => {
+  const current = parseTask(task);
+  requireState(current, "ANALYZING");
+  const failure = parseTaskAnalysisFailure(failureInput);
+  const { feasibility: _feasibility, taskContract: _contract, analysis: _analysis, ...withoutAnalysis } = current;
+  const withFailure = parseTask({
+    ...withoutAnalysis,
+    state: "FAILED",
+    analysisFailure: failure,
+    updatedAt: timestamp,
+    events: [
+      ...current.events,
+      event("ANALYSIS_FAILED", timestamp, {
+        phase: failure.phase,
+        code: failure.code,
+        ...(failure.runId === undefined ? {} : { runId: failure.runId }),
+      }),
+      event("STATE_CHANGED", timestamp, { from: "ANALYZING", to: "FAILED" }),
+    ],
+  });
+  return withFailure;
 };
 
 export const storeTaskContract = (
@@ -268,6 +399,65 @@ export const storeTaskContract = (
       ...current.events,
       event("CONTRACT_STORED", timestamp, {
         source: "supplied_m1_contract",
+      }),
+    ],
+  });
+};
+
+export const editTaskContract = (
+  task: Task,
+  patchInput: TaskContractPatch,
+  timestamp = nowTimestamp(),
+): Task => {
+  const current = parseTask(task);
+  requireState(current, "WAITING_FOR_APPROVAL");
+  if (current.taskContract === undefined) {
+    throw new TaskDomainError(
+      "INVALID_TRANSITION",
+      `Task ${current.id} has no Task Contract to edit.`,
+    );
+  }
+  if (current.taskContract.approved) {
+    throw new TaskDomainError(
+      "INVALID_TRANSITION",
+      `Approved Task Contract for ${current.id} cannot be silently modified.`,
+    );
+  }
+  const patch = parseTaskContractPatch(patchInput);
+  const acceptanceCriteriaDetails =
+    patch.acceptanceCriteriaDetails ??
+    current.taskContract.acceptanceCriteriaDetails;
+  const testRequirementDetails =
+    patch.testRequirementDetails ?? current.taskContract.testRequirementDetails;
+  return parseTask({
+    ...current,
+    taskContract: {
+      ...current.taskContract,
+      ...patch,
+      ...(acceptanceCriteriaDetails === undefined
+        ? {}
+        : {
+            acceptanceCriteriaDetails,
+            acceptanceCriteria: acceptanceCriteriaDetails.map(
+              (criterion) => criterion.description,
+            ),
+          }),
+      ...(testRequirementDetails === undefined
+        ? {}
+        : {
+            testRequirementDetails,
+            testRequirements: testRequirementDetails.map(
+              (requirement) =>
+                `${requirement.category}: ${requirement.description}`,
+            ),
+          }),
+      approved: false,
+    },
+    updatedAt: timestamp,
+    events: [
+      ...current.events,
+      event("CONTRACT_UPDATED", timestamp, {
+        fields: Object.keys(patch).sort().join(","),
       }),
     ],
   });
@@ -382,6 +572,8 @@ export const recheckTask = (
     feasibility: _feasibility,
     pause: _pause,
     taskContract: _taskContract,
+    analysis: _analysis,
+    analysisFailure: _analysisFailure,
     ...withoutPriorAnalysis
   } = current;
 

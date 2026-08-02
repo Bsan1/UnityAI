@@ -25,4 +25,6 @@ When Cross Review is `ON`, the initial intended reviewer is Claude Sonnet throug
 
 These values now live in `config/models.json` as model aliases plus declarative routing records. Provider executable settings live separately in `config/providers.json`, and agent behavior lives under `agents/`. Changing `providerModelName` or a routing record does not require changing an agent definition.
 
-M3 validates and exposes routing records but does not execute them or choose a model from task strength. The `/ai/execute` development endpoint requires an explicit model ID and effort. M4 will consume the configuration when it adds interpretation and feasibility orchestration; there is still no runtime escalation or automatic cost policy.
+M4 now consumes these routing records. The Interpreter always uses its `ALL` route. Deterministic preliminary strength selects exactly one configured Feasibility model/effort. After feasibility, deterministic final strength produces a per-task execution snapshot for Implementation, QA, Fix, and optional Cross Review. Fix is copied exactly from Implementation. Cross Review is present only when the task's persisted boolean is `true`.
+
+The snapshot is planning data only; M4 does not execute those future phases. A blocked recheck may replace the unapproved proposed snapshot. Approval persists the task's snapshot, so later global configuration changes do not silently rewrite the approved plan. There is still no runtime escalation, automatic cost policy, or model selection outside these explicit records.

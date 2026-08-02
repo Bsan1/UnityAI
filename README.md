@@ -4,7 +4,7 @@ UnityAI is the foundation of a standalone, local AI development orchestrator for
 
 ## Current status
 
-The repository has completed **M3 - AI Provider and Agent Abstraction**. It currently provides:
+The repository has completed **M4 - Analysis, Feasibility and Task Contract Pipeline**. It currently provides:
 
 - an npm workspace;
 - a strict core task model with explicit lifecycle transitions and audit history;
@@ -16,12 +16,17 @@ The repository has completed **M3 - AI Provider and Agent Abstraction**. It curr
 - replaceable model aliases and documented routing records in configuration;
 - provider-neutral execution through local Codex and Claude Code CLI adapters;
 - structured-output validation, process timeout/cancellation, and bounded execution artifacts;
-- a minimal Node.js/TypeScript HTTP server with health, task, Git, and M3 development AI APIs;
+- production read-only Task Interpreter and Feasibility agents;
+- a two-call first-analysis flow and one-call blocked recheck;
+- deterministic preliminary/final strength, routing snapshots, and evidence-oriented Task Contracts;
+- editable unapproved contracts, approval gating, technical analysis failures, and per-task concurrency protection;
+- validated task analysis artifacts linked to bounded M3 execution runs;
+- a minimal Node.js/TypeScript HTTP server with health, task, Git, M3 development AI, and M4 analysis APIs;
 - a minimal React/Vite page that checks server reachability;
 - small `core` and `shared` TypeScript packages; and
 - product and architecture documentation.
 
-M1 can store supplied feasibility results and Task Contracts so the state pipeline can be tested. M2 can prepare and manage a safe Git environment. M3 can explicitly execute a selected development agent/model through either configured provider, but it is not connected to task states. Real interpretation/feasibility, Task Contract generation, task-strength routing, implementation/review/QA orchestration, Unity integration, automatic fixes, merging, pushing, and the production task UI are intentionally not implemented. M4 is next.
+M1's manually supplied feasibility/contract routes remain development support. M2 can prepare and manage a safe Git environment. M3 can explicitly execute a selected development agent/model. M4 now connects task states to real interpretation and current-target feasibility, but stops after contract approval at `READY_FOR_IMPLEMENTATION`. Git preparation after approval, implementation/review/QA orchestration, cross-review execution, Unity integration, automatic fixes, dependency installation, merging, pushing, and the production task UI are intentionally not implemented. M5 is next.
 
 ## Requirements
 
@@ -46,28 +51,30 @@ npm run dev:web
 
 The server listens on `http://127.0.0.1:3000` by default. The Vite development server proxies `/health` to it. Set `UNITYAI_PORT` to change the server port, `UNITYAI_RUNTIME_PATH` to use a different runtime-data directory, or `UNITYAI_CONFIG_PATH` to load different task defaults. M3 also supports `UNITYAI_AGENTS_PATH`, `UNITYAI_MODELS_CONFIG_PATH`, and `UNITYAI_PROVIDERS_CONFIG_PATH`; configuration changes require a restart.
 
-## M1 task API
+## Task and M4 analysis API
 
 | Method | Route | Purpose |
 | --- | --- | --- |
-| `POST` | `/tasks` | Create a task in `CREATED`; requires `originalRequest` and `strength` |
+| `POST` | `/tasks` | Create a task in `CREATED`; requires `originalRequest`; M4 analysis also requires `targetProjectPath` |
 | `GET` | `/tasks` | List persisted tasks |
 | `GET` | `/tasks/:id` | Read one task |
 | `PATCH` | `/tasks/:id/draft` | Edit an editable prerequisite `DRAFT` |
 | `POST` | `/tasks/:id/submit` | Submit a `DRAFT` into `CREATED` |
-| `POST` | `/tasks/:id/analyze` | Request the `ANALYZING` state without running AI |
-| `POST` | `/tasks/:id/feasibility` | Store a supplied M1 feasibility result |
-| `POST` | `/tasks/:id/contract` | Store a supplied, unapproved Task Contract |
+| `POST` | `/tasks/:id/analyze` | Run Interpreter, Feasibility, deterministic routing, and contract planning |
+| `GET` | `/tasks/:id/analysis` | Read normalized interpretation, feasibility, routing, contract, or failure artifacts |
+| `PATCH` | `/tasks/:id/contract` | Edit allowed user-facing fields of an unapproved M4 contract |
+| `POST` | `/tasks/:id/feasibility` | Store a supplied M1 feasibility result (development/test support only) |
+| `POST` | `/tasks/:id/contract` | Store a supplied M1 Task Contract (development/test support only) |
 | `POST` | `/tasks/:id/approve` | Approve the stored contract and become implementation-ready |
 | `POST` | `/tasks/:id/pause` | Pause an active task |
 | `POST` | `/tasks/:id/resume` | Resume its recorded prior state |
-| `POST` | `/tasks/:id/recheck` | Request fresh analysis for a blocked task |
+| `POST` | `/tasks/:id/recheck` | Reuse valid interpretation and rerun Feasibility against current target state |
 | `POST` | `/tasks/:id/cancel` | Logically cancel a task |
 | `POST` | `/tasks/:id/prerequisite-draft` | Create an editable prerequisite draft without executing it |
 
-Task strengths are `LIGHT`, `STANDARD`, and `STRONG`. Defaults in `config/defaults.json` set Cross Review and Automatic Fixes to `true`; each task persists its copied values.
+Task strengths are `LIGHT`, `STANDARD`, and `STRONG`. An optional create-time strength is only an initial value; M4 deterministically records the final strength before approval. Defaults in `config/defaults.json` set Cross Review and Automatic Fixes to `true`; each task persists its copied values.
 
-The feasibility and contract endpoints are explicitly M1 development mechanisms. M4 will connect these state changes to real analysis agents. Recheck clears the stale current result, records the request in history, and returns to `ANALYZING`; it does not claim that feasibility ran.
+The supplied feasibility and `POST` contract endpoints are explicitly M1 development mechanisms. Production analysis uses `POST /analyze`. A normal first analysis invokes exactly Interpreter and Feasibility; no third model generates or summarizes the contract. A normal blocked recheck invokes only Feasibility. Technical provider failure is stored as `FAILED` analysis rather than fabricated feasibility, and no stronger model is retried.
 
 ## M2 Git API
 
@@ -89,7 +96,7 @@ The task branch is `ai/TASK-0001`; the worktree defaults to `runtime/worktrees/T
 
 ## Persistence
 
-Tasks are stored as `runtime/tasks/TASK-0001/task.json`; M2 Git metadata is stored separately as `runtime/tasks/TASK-0001/git.json`. Writes use a temporary file followed by a same-directory rename. Persisted content is validated on read, and invalid metadata fails clearly.
+Tasks are stored as `runtime/tasks/TASK-0001/task.json`; M2 Git metadata is stored separately as `runtime/tasks/TASK-0001/git.json`. M4 writes `interpretation.json`, `feasibility.json`, `routing.json`, `contract.json`, or a technical `failure.json` under `runtime/tasks/TASK-0001/analysis/`. Writes use a temporary file followed by a same-directory rename. Persisted content is validated on read, and invalid metadata fails clearly.
 
 ## M3 AI development API
 
@@ -114,6 +121,14 @@ runtime/ai/runs/RUN-<UUID>/stderr.log
 ```
 
 Request artifacts contain metadata, sizes, and a digest rather than raw input/context. Logs are redacted and bounded by `maximumPersistedLogBytes` in `config/providers.json`. Provider credentials and environment variables are never written to execution records.
+
+## M4 analysis behavior
+
+The production Interpreter reasons from the task request without repository inspection. Deterministic preliminary strength selects one configured Feasibility route. Feasibility runs read-only in the external `targetProjectPath` and inspects the current project state; a dirty target is observed but never cleaned, stashed, committed, or copied. A bounded before/after project fingerprint provides a practical read-only regression guard.
+
+`READY` produces a deterministic unapproved Task Contract and `WAITING_FOR_APPROVAL`. `AUTO_FIXABLE`, `BLOCKED_ARCHITECTURE`, and `BLOCKED_USER` remain `BLOCKED`; M4 installs nothing. Contracts include stable acceptance/test IDs, evidence expectations, test categories, final strength, and a persisted future execution plan. Fix matches Implementation exactly, Cross Review remains a task boolean, and there is no model escalation.
+
+After approval, the task reaches `READY_FOR_IMPLEMENTATION` and M4 stops. Approval does not prepare an M2 worktree or execute any agent. A normal recheck reads the current target and reuses the valid Interpreter artifact, so it costs one Feasibility call. Missing or invalid interpretation causes it to be regenerated.
 
 ## Documentation
 

@@ -5,6 +5,7 @@ import { TaskDomainError, applicationInfo } from "@unityai/core";
 import type { HealthResponse } from "@unityai/shared";
 
 import type { AIService } from "./aiService.js";
+import type { AnalysisService } from "./analysisService.js";
 import { ServerError } from "./errors.js";
 import type { GitSafetyService } from "./gitSafetyService.js";
 import type { TaskService } from "./taskService.js";
@@ -66,10 +67,33 @@ const handleTaskAction = async (
   service: TaskService,
   id: string,
   action: string,
+  analysisService: AnalysisService | undefined,
 ): Promise<boolean> => {
   if (request.method === "PATCH" && action === "draft") {
     const task = await service.editDraft(id, await readJsonBody(request));
     sendJson(response, 200, { task });
+    return true;
+  }
+
+  if (
+    request.method === "GET" &&
+    action === "analysis" &&
+    analysisService !== undefined
+  ) {
+    sendJson(response, 200, await analysisService.getAnalysis(id));
+    return true;
+  }
+
+  if (
+    request.method === "PATCH" &&
+    action === "contract" &&
+    analysisService !== undefined
+  ) {
+    sendJson(
+      response,
+      200,
+      await analysisService.editContract(id, await readJsonBody(request)),
+    );
     return true;
   }
 
@@ -84,8 +108,30 @@ const handleTaskAction = async (
       return true;
     }
     case "analyze": {
-      const task = await service.analyze(id);
-      sendJson(response, 200, { task });
+      if (analysisService === undefined) {
+        const task = await service.analyze(id);
+        sendJson(response, 200, { task });
+        return true;
+      }
+      const controller = new AbortController();
+      const abort = (): void => controller.abort();
+      const abortOnPrematureClose = (): void => {
+        if (!response.writableEnded) {
+          controller.abort();
+        }
+      };
+      request.once("aborted", abort);
+      response.once("close", abortOnPrematureClose);
+      try {
+        sendJson(
+          response,
+          200,
+          await analysisService.analyze(id, controller.signal),
+        );
+      } finally {
+        request.off("aborted", abort);
+        response.off("close", abortOnPrematureClose);
+      }
       return true;
     }
     case "feasibility": {
@@ -102,8 +148,10 @@ const handleTaskAction = async (
       return true;
     }
     case "approve": {
-      const task = await service.approve(id);
-      sendJson(response, 200, { task });
+      const result = analysisService === undefined
+        ? { task: await service.approve(id) }
+        : await analysisService.approve(id);
+      sendJson(response, 200, result);
       return true;
     }
     case "pause": {
@@ -117,8 +165,30 @@ const handleTaskAction = async (
       return true;
     }
     case "recheck": {
-      const task = await service.recheck(id);
-      sendJson(response, 200, { task });
+      if (analysisService === undefined) {
+        const task = await service.recheck(id);
+        sendJson(response, 200, { task });
+        return true;
+      }
+      const controller = new AbortController();
+      const abort = (): void => controller.abort();
+      const abortOnPrematureClose = (): void => {
+        if (!response.writableEnded) {
+          controller.abort();
+        }
+      };
+      request.once("aborted", abort);
+      response.once("close", abortOnPrematureClose);
+      try {
+        sendJson(
+          response,
+          200,
+          await analysisService.recheck(id, controller.signal),
+        );
+      } finally {
+        request.off("aborted", abort);
+        response.off("close", abortOnPrematureClose);
+      }
       return true;
     }
     case "cancel": {
@@ -250,6 +320,7 @@ const handleRequest = async (
   service: TaskService,
   gitService: GitSafetyService,
   aiService: AIService | undefined,
+  analysisService: AnalysisService | undefined,
 ): Promise<void> => {
   const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
   const path = requestUrl.pathname;
@@ -300,7 +371,14 @@ const handleRequest = async (
     if (
       id !== undefined &&
       action !== undefined &&
-      (await handleTaskAction(request, response, service, id, action))
+      (await handleTaskAction(
+        request,
+        response,
+        service,
+        id,
+        action,
+        analysisService,
+      ))
     ) {
       return;
     }
@@ -340,9 +418,17 @@ export const createUnityAiServer = (
   service: TaskService,
   gitService: GitSafetyService,
   aiService?: AIService,
+  analysisService?: AnalysisService,
 ): Server =>
   createServer((request, response) => {
-    void handleRequest(request, response, service, gitService, aiService).catch(
+    void handleRequest(
+      request,
+      response,
+      service,
+      gitService,
+      aiService,
+      analysisService,
+    ).catch(
       (error: unknown) => {
         handleError(response, error);
       },

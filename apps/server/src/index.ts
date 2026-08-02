@@ -5,6 +5,8 @@ import { applicationInfo } from "@unityai/core";
 
 import { createUnityAiServer } from "./app.js";
 import { bootstrapAIService } from "./aiBootstrap.js";
+import { AnalysisArtifactStore } from "./analysisArtifactStore.js";
+import { AnalysisService } from "./analysisService.js";
 import { loadTaskSettings } from "./config.js";
 import { GitCommandRunner } from "./gitCommandRunner.js";
 import { GitEnvironmentStore } from "./gitEnvironmentStore.js";
@@ -63,7 +65,19 @@ const aiService = await bootstrapAIService({
   providersPath,
   runtimeRoot,
 });
-const server = createUnityAiServer(service, gitService, aiService);
+const analysisArtifacts = new AnalysisArtifactStore(runtimeRoot);
+await analysisArtifacts.initialize();
+const analysisService = new AnalysisService(
+  service,
+  analysisArtifacts,
+  aiService,
+);
+const server = createUnityAiServer(
+  service,
+  gitService,
+  aiService,
+  analysisService,
+);
 const port = resolvePort(process.env.UNITYAI_PORT);
 
 server.listen(port, host, () => {

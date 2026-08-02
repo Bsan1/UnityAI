@@ -45,7 +45,7 @@ A dependency is safely auto-fixable only when it is simple and approved, such as
 
 Do not introduce a dependency graph unless a later demonstrated need requires it.
 
-**M1 implementation note:** Because real feasibility does not exist yet, recheck records the request and returns the task to `ANALYZING` without fabricating a result. M4 will connect that state to current-repository inspection.
+**Implementation note:** M1 originally recorded a state-only recheck request. M4 now reuses a valid interpretation, reruns Feasibility against the current target, and rebuilds only unapproved planning data. It still never trusts prerequisite-task completion by itself.
 
 ## D-009: QA is layered, comprehensive, and evidence-based
 
@@ -76,3 +76,9 @@ Destructive Git operations are permitted only in the exact persisted UnityAI-man
 **Decision:** Agent behavior, model configuration, and provider invocation are separate. M3 callers explicitly select an agent, model alias, reasoning effort, and existing working directory; the executor does not infer task strength, choose a route, or escalate after failure.
 
 Codex and Claude use their installed non-interactive CLIs through provider-local argument construction and normal local authentication. Processes receive executable/argument arrays, bounded output capture, timeouts, and cancellation. Provider flags and arbitrary executables are not exposed by HTTP. Development execution metadata is stored under `runtime/ai/runs`; raw input and authentication state are not persisted, and diagnostic logs are redacted and size-bounded.
+
+## D-015: Cost-conscious deterministic analysis planning
+
+**Decision:** A normal first M4 analysis uses exactly two AI calls: Task Interpreter, then Feasibility. Preliminary strength is deterministic code used only to select the configured feasibility route. Final strength, the immutable proposed routing snapshot, and the Task Contract are also deterministic application code; there is no third contract/summarization call and no failure-based model escalation.
+
+A normal blocked-task recheck reuses a valid persisted interpretation and invokes only Feasibility against the current external target. Interpretation is rerun only when its persisted result is missing or invalid. Analysis is read-only, accepts the target's current dirty state without cleaning it, and never prepares an implementation worktree.

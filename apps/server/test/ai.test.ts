@@ -239,12 +239,14 @@ const executeBody = (workingDirectory: string, modelId: string) => ({
 test("repository agent, provider, model, and routing configuration load independently", async () => {
   const workspaceRoot = process.cwd();
   const agents = await AgentRegistry.load(join(workspaceRoot, "agents"));
-  assert.equal(agents.list().length, 2);
+  assert.equal(agents.list().length, 4);
   assert.equal(agents.get("m3-readonly-json").permission, "READ_ONLY");
   assert.equal(
     agents.get("m3-worktree-writer").permission,
     "WORKTREE_WRITE",
   );
+  assert.equal(agents.get("task-interpreter").permission, "READ_ONLY");
+  assert.equal(agents.get("feasibility").permission, "READ_ONLY");
 
   const models = await loadModelConfiguration(
     join(workspaceRoot, "config", "models.json"),

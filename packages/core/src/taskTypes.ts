@@ -1,3 +1,11 @@
+import type {
+  AcceptanceCriterion,
+  ExecutionRoutingSnapshot,
+  PlannedTestRequirement,
+  TaskAnalysisFailure,
+  TaskAnalysisSummary,
+} from "./analysisTypes.js";
+
 export const TASK_STATES = [
   "DRAFT",
   "CREATED",
@@ -38,6 +46,9 @@ export const TASK_EVENT_TYPES = [
   "FEASIBILITY_RECORDED",
   "CONTRACT_STORED",
   "CONTRACT_APPROVED",
+  "CONTRACT_UPDATED",
+  "ANALYSIS_COMPLETED",
+  "ANALYSIS_FAILED",
   "TASK_PAUSED",
   "TASK_RESUMED",
   "TASK_CANCELLED",
@@ -63,6 +74,7 @@ export interface FeasibilityResult {
 }
 
 export interface TaskContractInput {
+  readonly originalTaskSummary?: string;
   readonly understoodExplicitRequirements: readonly string[];
   readonly inferredRequirements: readonly string[];
   readonly prerequisites: readonly string[];
@@ -70,9 +82,14 @@ export interface TaskContractInput {
   readonly nonGoals?: readonly string[];
   readonly acceptanceCriteria: readonly string[];
   readonly testRequirements: readonly string[];
+  readonly taskStrength?: TaskStrength;
+  readonly executionPlan?: ExecutionRoutingSnapshot;
+  readonly acceptanceCriteriaDetails?: readonly AcceptanceCriterion[];
+  readonly testRequirementDetails?: readonly PlannedTestRequirement[];
 }
 
 export interface TaskContract {
+  readonly originalTaskSummary?: string;
   readonly understoodExplicitRequirements: readonly string[];
   readonly inferredRequirements: readonly string[];
   readonly prerequisites: readonly string[];
@@ -80,6 +97,10 @@ export interface TaskContract {
   readonly nonGoals: readonly string[];
   readonly acceptanceCriteria: readonly string[];
   readonly testRequirements: readonly string[];
+  readonly taskStrength?: TaskStrength;
+  readonly executionPlan?: ExecutionRoutingSnapshot;
+  readonly acceptanceCriteriaDetails?: readonly AcceptanceCriterion[];
+  readonly testRequirementDetails?: readonly PlannedTestRequirement[];
   readonly approved: boolean;
   readonly approvedAt?: string;
 }
@@ -114,6 +135,8 @@ export interface Task {
   readonly automaticFixesEnabled: boolean;
   readonly feasibility?: FeasibilityResult;
   readonly taskContract?: TaskContract;
+  readonly analysis?: TaskAnalysisSummary;
+  readonly analysisFailure?: TaskAnalysisFailure;
   readonly pause?: PauseInfo;
   readonly cancellation?: CancellationInfo;
   readonly originTaskId?: TaskId;
@@ -125,9 +148,19 @@ export interface CreateTaskInput {
   readonly title?: string;
   readonly originalRequest: string;
   readonly targetProjectPath?: string;
-  readonly strength: TaskStrength;
+  readonly strength?: TaskStrength;
   readonly crossReviewEnabled?: boolean;
   readonly automaticFixesEnabled?: boolean;
+}
+
+export interface TaskContractPatch {
+  readonly understoodExplicitRequirements?: readonly string[];
+  readonly inferredRequirements?: readonly string[];
+  readonly prerequisites?: readonly string[];
+  readonly implementationScope?: readonly string[];
+  readonly nonGoals?: readonly string[];
+  readonly acceptanceCriteriaDetails?: readonly AcceptanceCriterion[];
+  readonly testRequirementDetails?: readonly PlannedTestRequirement[];
 }
 
 export interface DraftTaskPatch {
