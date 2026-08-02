@@ -1,34 +1,40 @@
 # Architecture
 
-## Current M1 state
+## Current M2 state
 
-M1 remains a small npm workspace with four independently named workspaces:
+M2 remains a small npm workspace with four independently named workspaces:
 
 ```text
 apps/web       React + Vite connectivity page
-apps/server    Local Node.js HTTP server, JSON task store, and task API
-packages/core  Task domain, state transitions, actions, and schema validation
+apps/server    Local HTTP server, JSON stores, task API, and native-Git safety layer
+packages/core  Task domain plus pure task/Git metadata schema validation
 packages/shared Shared HTTP contract types
 ```
 
 The browser still provides only the M0 connectivity page. During development, Vite proxies `/health` to the local server. The server uses Node's built-in HTTP module and exposes direct task commands. No backend framework or database is present.
 
-`packages/core` owns the `Task` entity, a small fixed state set, legal transition rules, pause/resume and blocked-task actions, feasibility and Task Contract schemas, approval gating, and runtime validation. The task JSON is the source of truth; its event history is only an audit aid, not event sourcing.
+`packages/core` owns the `Task` entity, state rules/actions, feasibility and Task Contract schemas, and pure Git environment metadata schema. It has no filesystem, child-process, or concrete Git command dependency. Task JSON remains the task source of truth; event history is an audit aid, not event sourcing.
 
-`apps/server` owns a concrete local `TaskStore` and `TaskService`. The store scans persisted IDs at startup, validates every task, and performs same-directory temporary-file/rename writes. Data uses this layout:
+`apps/server` owns the concrete task/Git stores and services. The native Git runner passes argument arrays directly to the installed `git` executable with no shell. Repository inspection resolves the selected external worktree, current branch, base commit, common Git directory, and machine-readable status. Data uses this layout:
 
 ```text
 runtime/tasks/TASK-0001/task.json
+runtime/tasks/TASK-0001/git.json
 runtime/tasks/TASK-0002/task.json
+runtime/worktrees/TASK-0001/
 ```
+
+Preparation requires a clean original external worktree, then creates `ai/TASK-0001` in the deterministic managed worktree path. The persisted write owner is the task ID. A repeated prepare returns the same environment only after revalidation; unrelated existing branches or paths are never reused.
+
+Every destructive rollback, cleanup-discard, or task-branch history rewrite derives its target path from persisted metadata and verifies exact canonical managed path, task/write ownership, original-versus-managed separation, repository common directory, current task branch, and target repository identity. The original worktree is never reset or cleaned. Finalization rewrites only the dedicated task branch to one commit on its recorded base. Cleanup retains that branch. The layer contains no merge or push operation.
 
 `config/defaults.json` contains the two boolean defaults copied into new tasks. M1's supplied feasibility and contract endpoints are development mechanisms only. They do not claim that an agent ran. Recheck moves an eligible task to `ANALYZING`, clears its stale current analysis result, and records the request for M4.
 
-This current structure deliberately contains no AI/provider execution, Git task automation, Unity connection, implementation execution, QA, automatic fix execution, or production task UI.
+This current structure deliberately contains no AI/provider/agent execution, model routing execution, task implementation, Unity connection, QA, automatic fix execution, merge/push/remote management, or production Git UI.
 
 ## Planned architecture
 
-The following boundaries guide later milestones. Only the M1 portions described above are implemented.
+The following boundaries guide later milestones. Only the M0-M2 portions described above are implemented.
 
 ### Local application boundary
 
@@ -52,7 +58,7 @@ An agent definition owns role, instructions, permissions, tools, context rules, 
 
 ### Target project adapters
 
-Filesystem and native Git CLI adapters will inspect and safely modify the selected repository. A later Unity adapter and reusable Unity-side bridge will expose project structure, editor state, Play Mode, and test evidence. Exactly one writing agent may own a writable worktree; read-only reviewers may run independently.
+The filesystem/native-Git adapter now inspects external repositories and safely modifies only verified managed task worktrees. A later Unity adapter and reusable Unity-side bridge will expose project structure, editor state, Play Mode, and test evidence. M2 records one task as the write owner; later orchestration will enforce that only its writing agent uses the worktree, while read-only reviewers may inspect independently.
 
 ### Persistence and configuration
 

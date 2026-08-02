@@ -55,7 +55,7 @@ Acceptance criteria should use evidence such as compiler and Unity console outpu
 
 ## D-010: Git is a safety boundary
 
-**Decision:** Future Git behavior includes repository-state detection, base commit recording, task branches and/or worktrees, checkpoints, diffs, rollback, and final commits. Only one writing agent may own a writable worktree at a time; read-only reviewers may operate independently. M1 does not automate Git.
+**Decision:** Git behavior includes repository-state detection, base commit recording, dedicated task branches/worktrees, checkpoints, diffs, guarded rollback, and squashed final task commits. Only one writing task may own a writable worktree at a time; read-only reviewers may operate independently. M2 implements these local primitives but never merges or pushes.
 
 ## D-011: Provider-neutral system
 
@@ -64,3 +64,9 @@ Acceptance criteria should use evidence such as compiler and Unity console outpu
 ## D-012: Prefer simplicity
 
 **Decision:** Use simple, readable TypeScript. Do not add plugin marketplaces, complicated dependency graphs, distributed workers, cloud infrastructure, microservices, event sourcing frameworks, elaborate permission engines, large persistence frameworks, or speculative patterns without a later concrete requirement.
+
+## D-013: Conservative original-worktree policy
+
+**Decision:** UnityAI refuses to prepare a task Git environment when the selected external repository's original worktree has staged, unstaged, or untracked changes. It does not stash, commit, reset, copy, exclude, or automatically include those changes. The user must resolve them manually and retry.
+
+Destructive Git operations are permitted only in the exact persisted UnityAI-managed task worktree after canonical path, repository, branch, task, and write-owner validation. Finalization may rewrite only the dedicated task branch. Cleanup retains the branch, and no M2 operation merges or pushes.

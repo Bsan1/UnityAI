@@ -5,6 +5,9 @@ import { applicationInfo } from "@unityai/core";
 
 import { createUnityAiServer } from "./app.js";
 import { loadTaskSettings } from "./config.js";
+import { GitCommandRunner } from "./gitCommandRunner.js";
+import { GitEnvironmentStore } from "./gitEnvironmentStore.js";
+import { GitSafetyService } from "./gitSafetyService.js";
 import { TaskService } from "./taskService.js";
 import { TaskStore } from "./taskStore.js";
 
@@ -34,7 +37,18 @@ const settings = await loadTaskSettings(configPath);
 const store = new TaskStore(runtimeRoot);
 await store.initialize();
 const service = new TaskService(store, settings);
-const server = createUnityAiServer(service);
+const gitEnvironmentStore = new GitEnvironmentStore(runtimeRoot);
+await gitEnvironmentStore.initialize();
+const gitRunner = new GitCommandRunner((operation) => {
+  console.info(`[git] ${operation}`);
+});
+const gitService = new GitSafetyService(
+  service,
+  gitEnvironmentStore,
+  join(runtimeRoot, "worktrees"),
+  gitRunner,
+);
+const server = createUnityAiServer(service, gitService);
 const port = resolvePort(process.env.UNITYAI_PORT);
 
 server.listen(port, host, () => {

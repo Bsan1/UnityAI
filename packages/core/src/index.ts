@@ -1,5 +1,12 @@
 export { applicationInfo } from "./application.js";
 export { TaskDomainError } from "./errors.js";
+export { GIT_ENVIRONMENT_STATUSES } from "./gitTypes.js";
+export type {
+  GitCheckpoint,
+  GitEnvironmentStatus,
+  GitTaskEnvironment,
+} from "./gitTypes.js";
+export { parseGitTaskEnvironment } from "./gitValidation.js";
 export {
   approveTaskContract,
   beginTaskAnalysis,

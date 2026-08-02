@@ -4,17 +4,20 @@ UnityAI is the foundation of a standalone, local AI development orchestrator for
 
 ## Current status
 
-The repository has completed **M1 - Core Task and State Pipeline**. It currently provides:
+The repository has completed **M2 - Git Safety Layer**. It currently provides:
 
 - an npm workspace;
 - a strict core task model with explicit lifecycle transitions and audit history;
 - JSON-backed task persistence with restart-safe `TASK-0001` IDs;
-- a minimal Node.js/TypeScript HTTP server with health and task APIs;
+- a native-Git safety layer for clean external target repositories;
+- dedicated `ai/TASK-0001` branches and managed task worktrees;
+- status/diff inspection, checkpoints, guarded rollback, squash finalization, and safe cleanup;
+- a minimal Node.js/TypeScript HTTP server with health, task, and Git APIs;
 - a minimal React/Vite page that checks server reachability;
 - small `core` and `shared` TypeScript packages; and
 - product and architecture documentation.
 
-M1 can store supplied feasibility results and Task Contracts so the state pipeline can be tested. It does not perform real interpretation or feasibility analysis. AI providers, Git automation, Unity integration, implementation execution, QA, automatic fixes, and the production task UI are intentionally not implemented yet. M2 is the next milestone.
+M1 can store supplied feasibility results and Task Contracts so the state pipeline can be tested. M2 can prepare and manage a safe Git environment, but it does not implement or run a task. AI providers, agents, model execution, real interpretation/feasibility, Unity integration, QA, automatic fixes, merging, pushing, and the production task UI are intentionally not implemented. M3 is next.
 
 ## Requirements
 
@@ -62,9 +65,27 @@ Task strengths are `LIGHT`, `STANDARD`, and `STRONG`. Defaults in `config/defaul
 
 The feasibility and contract endpoints are explicitly M1 development mechanisms. M4 will connect these state changes to real analysis agents. Recheck clears the stale current result, records the request in history, and returns to `ANALYZING`; it does not claim that feasibility ran.
 
+## M2 Git API
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/tasks/:id/git` | Read persisted Git environment metadata and current status |
+| `POST` | `/tasks/:id/git/inspect` | Inspect the external target repository without mutation |
+| `POST` | `/tasks/:id/git/prepare` | Create the dedicated task branch and managed worktree |
+| `GET` | `/tasks/:id/git/status` | Read machine-parsed worktree status |
+| `GET` | `/tasks/:id/git/diff` | Read changed paths, summary, and textual diff from the base commit |
+| `POST` | `/tasks/:id/git/checkpoint` | Commit all managed-worktree changes as an internal checkpoint |
+| `POST` | `/tasks/:id/git/rollback` | Roll back only the verified managed worktree to `BASE` or a checkpoint ID |
+| `POST` | `/tasks/:id/git/finalize` | Squash net task changes into one local task commit |
+| `POST` | `/tasks/:id/git/cleanup` | Remove only the registered managed worktree while retaining its branch |
+
+M2's V1 policy refuses preparation with `TARGET_WORKTREE_DIRTY` if the original target worktree has staged, unstaged, or untracked changes. UnityAI does not stash, commit, reset, copy, or exclude user changes. The user must clean or commit them manually before retrying.
+
+The task branch is `ai/TASK-0001`; the worktree defaults to `runtime/worktrees/TASK-0001`. Destructive reset/clean and branch-history squash operations run only after exact persisted ownership, canonical path, repository identity, and branch checks. Cleanup of active work requires `{ "discardChanges": true }`. Final task branches are never merged or pushed.
+
 ## Persistence
 
-Tasks are stored as `runtime/tasks/TASK-0001/task.json`. Writes use a temporary file followed by a same-directory rename. Persisted content is validated on read, and an invalid task prevents the store from silently starting with bad data.
+Tasks are stored as `runtime/tasks/TASK-0001/task.json`; M2 Git metadata is stored separately as `runtime/tasks/TASK-0001/git.json`. Writes use a temporary file followed by a same-directory rename. Persisted content is validated on read, and invalid metadata fails clearly.
 
 ## Documentation
 

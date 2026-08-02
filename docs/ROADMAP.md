@@ -1,6 +1,6 @@
 # Roadmap
 
-**M1 - Core Task and State Pipeline is complete. M2 - Git Safety Layer is next.** Milestones describe bounded increments; completing one does not authorize implementation of the next.
+**M2 - Git Safety Layer is complete. M3 - AI Provider and Agent Abstraction is next.** Milestones describe bounded increments; completing one does not authorize implementation of the next.
 
 ## M0 - Foundation (completed)
 
@@ -22,17 +22,17 @@
 
 **Completion criteria:** Tasks can be created, loaded, updated through valid transitions, paused, resumed, rechecked, and cancelled; prerequisite drafts remain editable and inactive; contract approval gates implementation readiness; invalid transitions and persisted data are rejected; restart persistence and ID continuation are tested.
 
-## M2 - Git Safety Layer (next)
+## M2 - Git Safety Layer (completed)
 
 **Goal:** Add a safe native-Git boundary for external target repositories.
 
-**Major deliverables:** Repository discovery and status inspection; base commit recording; task branch/worktree setup; single-writer ownership; checkpoints, diffs, rollback primitives, and safe cleanup; Git integration tests in temporary repositories.
+**Major deliverables:** Repository discovery and clean/dirty inspection; base branch/commit recording; deterministic task branch/worktree setup; persisted single-task write ownership; status/diff reporting; checkpoint commits; path-guarded rollback; one-commit task-branch finalization; guarded worktree cleanup; JSON metadata validation; isolated Git integration tests.
 
-**Explicit non-goals:** AI implementation, Unity integration, feasibility, Task Contracts, QA, and automatic final workflow decisions.
+**Explicit non-goals:** AI/provider/agent execution, model routing execution, Unity integration, feasibility execution, QA, automatic task implementation/fixes, original-branch merge, push, pull request, remote management, automatic stash, and production Git UI.
 
-**Completion criteria:** Supported repository states are detected; one writer is enforced; task isolation and rollback are verified; unrelated changes are preserved; nothing pushes remotely.
+**Completion criteria:** Supported repository states are detected; dirty originals are rejected untouched; one task owns each managed worktree; prepare is safely idempotent; status/diff, checkpoints, rollback, final squash, cleanup, and metadata reload are verified in temporary repositories; original branches/worktrees remain unchanged; nothing merges or pushes.
 
-## M3 - AI Provider and Agent Abstraction
+## M3 - AI Provider and Agent Abstraction (next)
 
 **Goal:** Execute provider-neutral agent definitions using replaceable model routing.
 

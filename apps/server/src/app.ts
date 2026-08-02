@@ -5,6 +5,7 @@ import { TaskDomainError, applicationInfo } from "@unityai/core";
 import type { HealthResponse } from "@unityai/shared";
 
 import { ServerError } from "./errors.js";
+import type { GitSafetyService } from "./gitSafetyService.js";
 import type { TaskService } from "./taskService.js";
 
 const maximumBodyBytes = 1_048_576;
@@ -137,10 +138,71 @@ const handleTaskAction = async (
   }
 };
 
+const handleGitRoute = async (
+  request: IncomingMessage,
+  response: ServerResponse,
+  gitService: GitSafetyService,
+  id: string,
+  action: string | undefined,
+): Promise<boolean> => {
+  if (action === undefined && request.method === "GET") {
+    sendJson(response, 200, await gitService.getEnvironmentWithStatus(id));
+    return true;
+  }
+
+  if (action === "inspect" && request.method === "POST") {
+    sendJson(response, 200, { inspection: await gitService.inspect(id) });
+    return true;
+  }
+  if (action === "prepare" && request.method === "POST") {
+    sendJson(response, 200, { environment: await gitService.prepare(id) });
+    return true;
+  }
+  if (action === "status" && request.method === "GET") {
+    sendJson(response, 200, { status: await gitService.status(id) });
+    return true;
+  }
+  if (action === "diff" && request.method === "GET") {
+    sendJson(response, 200, { diff: await gitService.diff(id) });
+    return true;
+  }
+  if (action === "checkpoint" && request.method === "POST") {
+    sendJson(
+      response,
+      200,
+      await gitService.checkpoint(id, await readJsonBody(request)),
+    );
+    return true;
+  }
+  if (action === "rollback" && request.method === "POST") {
+    sendJson(
+      response,
+      200,
+      await gitService.rollback(id, await readJsonBody(request)),
+    );
+    return true;
+  }
+  if (action === "finalize" && request.method === "POST") {
+    sendJson(response, 200, {
+      environment: await gitService.finalize(id, await readJsonBody(request)),
+    });
+    return true;
+  }
+  if (action === "cleanup" && request.method === "POST") {
+    sendJson(response, 200, {
+      environment: await gitService.cleanup(id, await readJsonBody(request)),
+    });
+    return true;
+  }
+
+  return false;
+};
+
 const handleRequest = async (
   request: IncomingMessage,
   response: ServerResponse,
   service: TaskService,
+  gitService: GitSafetyService,
 ): Promise<void> => {
   const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
   const path = requestUrl.pathname;
@@ -158,6 +220,17 @@ const handleRequest = async (
     if (request.method === "POST") {
       const task = await service.create(await readJsonBody(request));
       sendJson(response, 201, { task });
+      return;
+    }
+  }
+
+  const gitRoute = /^\/tasks\/(TASK-\d{4,})\/git(?:\/([a-z-]+))?$/.exec(path);
+  if (gitRoute !== null) {
+    const id = gitRoute[1];
+    if (
+      id !== undefined &&
+      (await handleGitRoute(request, response, gitService, id, gitRoute[2]))
+    ) {
       return;
     }
   }
@@ -194,7 +267,11 @@ const handleError = (response: ServerResponse, error: unknown): void => {
 
   if (error instanceof ServerError) {
     sendJson(response, error.statusCode, {
-      error: { code: error.code, message: error.message },
+      error: {
+        code: error.code,
+        message: error.message,
+        ...(error.details === undefined ? {} : { details: error.details }),
+      },
     });
     return;
   }
@@ -205,9 +282,14 @@ const handleError = (response: ServerResponse, error: unknown): void => {
   });
 };
 
-export const createUnityAiServer = (service: TaskService): Server =>
+export const createUnityAiServer = (
+  service: TaskService,
+  gitService: GitSafetyService,
+): Server =>
   createServer((request, response) => {
-    void handleRequest(request, response, service).catch((error: unknown) => {
-      handleError(response, error);
-    });
+    void handleRequest(request, response, service, gitService).catch(
+      (error: unknown) => {
+        handleError(response, error);
+      },
+    );
   });
