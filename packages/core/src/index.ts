@@ -1,4 +1,34 @@
 export { applicationInfo } from "./application.js";
+export {
+  AGENT_PERMISSIONS,
+  AGENT_TOOL_POLICIES,
+  MODEL_ROUTING_WORK,
+  REASONING_EFFORTS,
+} from "./aiTypes.js";
+export type {
+  AIProviderConfiguration,
+  AgentContextPolicy,
+  AgentDefinition,
+  AgentPermission,
+  AgentToolPolicy,
+  JsonObject,
+  JsonPrimitive,
+  JsonValue,
+  ModelCapabilities,
+  ModelConfiguration,
+  ModelDefinition,
+  ModelRoutingEntry,
+  ModelRoutingStrength,
+  ModelRoutingWork,
+  ProviderConfiguration,
+  ReasoningEffort,
+} from "./aiTypes.js";
+export {
+  parseAIProviderConfiguration,
+  parseAgentDefinition,
+  parseModelConfiguration,
+  parseReasoningEffort,
+} from "./aiValidation.js";
 export { TaskDomainError } from "./errors.js";
 export { GIT_ENVIRONMENT_STATUSES } from "./gitTypes.js";
 export type {

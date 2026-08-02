@@ -4,6 +4,7 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { TaskDomainError, applicationInfo } from "@unityai/core";
 import type { HealthResponse } from "@unityai/shared";
 
+import type { AIService } from "./aiService.js";
 import { ServerError } from "./errors.js";
 import type { GitSafetyService } from "./gitSafetyService.js";
 import type { TaskService } from "./taskService.js";
@@ -198,17 +199,70 @@ const handleGitRoute = async (
   return false;
 };
 
+const handleAIRoute = async (
+  request: IncomingMessage,
+  response: ServerResponse,
+  aiService: AIService,
+  path: string,
+): Promise<boolean> => {
+  if (request.method === "GET" && path === "/ai/providers") {
+    sendJson(response, 200, {
+      providers: await aiService.providerAvailability(),
+    });
+    return true;
+  }
+  if (request.method === "GET" && path === "/ai/models") {
+    sendJson(response, 200, aiService.getModelConfiguration());
+    return true;
+  }
+  if (request.method === "GET" && path === "/ai/agents") {
+    sendJson(response, 200, { agents: aiService.listAgents() });
+    return true;
+  }
+  if (request.method === "POST" && path === "/ai/execute") {
+    const controller = new AbortController();
+    const abort = (): void => controller.abort();
+    const abortOnPrematureClose = (): void => {
+      if (!response.writableEnded) {
+        controller.abort();
+      }
+    };
+    request.once("aborted", abort);
+    response.once("close", abortOnPrematureClose);
+    try {
+      const execution = await aiService.execute(
+        await readJsonBody(request),
+        controller.signal,
+      );
+      sendJson(response, 200, { execution });
+    } finally {
+      request.off("aborted", abort);
+      response.off("close", abortOnPrematureClose);
+    }
+    return true;
+  }
+  return false;
+};
+
 const handleRequest = async (
   request: IncomingMessage,
   response: ServerResponse,
   service: TaskService,
   gitService: GitSafetyService,
+  aiService: AIService | undefined,
 ): Promise<void> => {
   const requestUrl = new URL(request.url ?? "/", "http://127.0.0.1");
   const path = requestUrl.pathname;
 
   if (request.method === "GET" && path === "/health") {
     sendJson(response, 200, healthResponse);
+    return;
+  }
+
+  if (
+    aiService !== undefined &&
+    (await handleAIRoute(request, response, aiService, path))
+  ) {
     return;
   }
 
@@ -285,9 +339,10 @@ const handleError = (response: ServerResponse, error: unknown): void => {
 export const createUnityAiServer = (
   service: TaskService,
   gitService: GitSafetyService,
+  aiService?: AIService,
 ): Server =>
   createServer((request, response) => {
-    void handleRequest(request, response, service, gitService).catch(
+    void handleRequest(request, response, service, gitService, aiService).catch(
       (error: unknown) => {
         handleError(response, error);
       },

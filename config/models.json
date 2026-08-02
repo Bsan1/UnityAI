@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "models": [
+    {
+      "id": "codex-terra",
+      "displayName": "GPT-5.6 Terra",
+      "providerId": "codex",
+      "providerModelName": "gpt-5.6-terra",
+      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh"],
+      "capabilities": { "structuredOutput": true }
+    },
+    {
+      "id": "codex-sol",
+      "displayName": "GPT-5.6 Sol",
+      "providerId": "codex",
+      "providerModelName": "gpt-5.6-sol",
+      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh"],
+      "capabilities": { "structuredOutput": true }
+    },
+    {
+      "id": "claude-sonnet",
+      "displayName": "Claude Sonnet",
+      "providerId": "claude",
+      "providerModelName": "sonnet",
+      "supportedReasoningEfforts": ["low", "medium", "high", "xhigh", "max"],
+      "capabilities": { "structuredOutput": true }
+    }
+  ],
+  "routing": [
+    { "work": "INTERPRETER", "taskStrength": "ALL", "modelId": "codex-terra", "effort": "medium" },
+    { "work": "FEASIBILITY", "taskStrength": "LIGHT", "modelId": "codex-terra", "effort": "medium" },
+    { "work": "IMPLEMENTATION", "taskStrength": "LIGHT", "modelId": "codex-terra", "effort": "high" },
+    { "work": "QA_REASONING", "taskStrength": "LIGHT", "modelId": "codex-terra", "effort": "medium" },
+    { "work": "FEASIBILITY", "taskStrength": "STANDARD", "modelId": "codex-terra", "effort": "high" },
+    { "work": "IMPLEMENTATION", "taskStrength": "STANDARD", "modelId": "codex-sol", "effort": "medium" },
+    { "work": "QA_REASONING", "taskStrength": "STANDARD", "modelId": "codex-sol", "effort": "medium" },
+    { "work": "FEASIBILITY", "taskStrength": "STRONG", "modelId": "codex-sol", "effort": "high" },
+    { "work": "IMPLEMENTATION", "taskStrength": "STRONG", "modelId": "codex-sol", "effort": "high" },
+    { "work": "QA_REASONING", "taskStrength": "STRONG", "modelId": "codex-sol", "effort": "high" },
+    { "work": "CROSS_REVIEW", "taskStrength": "ALL", "modelId": "claude-sonnet" }
+  ],
+  "fixWork": "SAME_AS_IMPLEMENTATION",
+  "runtimeEscalation": false
+}

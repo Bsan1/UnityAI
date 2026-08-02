@@ -4,7 +4,7 @@ UnityAI is the foundation of a standalone, local AI development orchestrator for
 
 ## Current status
 
-The repository has completed **M2 - Git Safety Layer**. It currently provides:
+The repository has completed **M3 - AI Provider and Agent Abstraction**. It currently provides:
 
 - an npm workspace;
 - a strict core task model with explicit lifecycle transitions and audit history;
@@ -12,12 +12,16 @@ The repository has completed **M2 - Git Safety Layer**. It currently provides:
 - a native-Git safety layer for clean external target repositories;
 - dedicated `ai/TASK-0001` branches and managed task worktrees;
 - status/diff inspection, checkpoints, guarded rollback, squash finalization, and safe cleanup;
-- a minimal Node.js/TypeScript HTTP server with health, task, and Git APIs;
+- file-loaded agent definitions that are independent of model/provider configuration;
+- replaceable model aliases and documented routing records in configuration;
+- provider-neutral execution through local Codex and Claude Code CLI adapters;
+- structured-output validation, process timeout/cancellation, and bounded execution artifacts;
+- a minimal Node.js/TypeScript HTTP server with health, task, Git, and M3 development AI APIs;
 - a minimal React/Vite page that checks server reachability;
 - small `core` and `shared` TypeScript packages; and
 - product and architecture documentation.
 
-M1 can store supplied feasibility results and Task Contracts so the state pipeline can be tested. M2 can prepare and manage a safe Git environment, but it does not implement or run a task. AI providers, agents, model execution, real interpretation/feasibility, Unity integration, QA, automatic fixes, merging, pushing, and the production task UI are intentionally not implemented. M3 is next.
+M1 can store supplied feasibility results and Task Contracts so the state pipeline can be tested. M2 can prepare and manage a safe Git environment. M3 can explicitly execute a selected development agent/model through either configured provider, but it is not connected to task states. Real interpretation/feasibility, Task Contract generation, task-strength routing, implementation/review/QA orchestration, Unity integration, automatic fixes, merging, pushing, and the production task UI are intentionally not implemented. M4 is next.
 
 ## Requirements
 
@@ -40,7 +44,7 @@ npm run dev:server
 npm run dev:web
 ```
 
-The server listens on `http://127.0.0.1:3000` by default. The Vite development server proxies `/health` to it. Set `UNITYAI_PORT` to change the server port, `UNITYAI_RUNTIME_PATH` to use a different runtime-data directory, or `UNITYAI_CONFIG_PATH` to load different task defaults.
+The server listens on `http://127.0.0.1:3000` by default. The Vite development server proxies `/health` to it. Set `UNITYAI_PORT` to change the server port, `UNITYAI_RUNTIME_PATH` to use a different runtime-data directory, or `UNITYAI_CONFIG_PATH` to load different task defaults. M3 also supports `UNITYAI_AGENTS_PATH`, `UNITYAI_MODELS_CONFIG_PATH`, and `UNITYAI_PROVIDERS_CONFIG_PATH`; configuration changes require a restart.
 
 ## M1 task API
 
@@ -86,6 +90,30 @@ The task branch is `ai/TASK-0001`; the worktree defaults to `runtime/worktrees/T
 ## Persistence
 
 Tasks are stored as `runtime/tasks/TASK-0001/task.json`; M2 Git metadata is stored separately as `runtime/tasks/TASK-0001/git.json`. Writes use a temporary file followed by a same-directory rename. Persisted content is validated on read, and invalid metadata fails clearly.
+
+## M3 AI development API
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/ai/providers` | Report configured CLI, version, and authentication availability without running a completion |
+| `GET` | `/ai/models` | Return configured model aliases and non-executing routing records |
+| `GET` | `/ai/agents` | Return loaded agent definitions and access metadata |
+| `POST` | `/ai/execute` | Execute one explicit agent/model/effort in an explicit existing directory |
+
+`POST /ai/execute` is development support for M3. It accepts `agentId`, `modelId`, `effort`, `workingDirectory`, `input`, optional `context`, and optional `timeoutMs`. It does not choose a model, classify strength, mutate a task state, run cross-review, or start an implementation pipeline. Provider executables and flags are never accepted from HTTP callers.
+
+Codex runs through non-interactive `codex exec` with JSONL/final-message output, native schema support, an explicit model/effort/directory, ephemeral sessions, and a sandbox derived from agent permission. Claude runs through non-interactive print mode with JSON/schema output, explicit model/effort, no session persistence, and locked-down tool/permission flags. Both use normal local CLI authentication and executable/argument arrays with prompt input over stdin.
+
+M3 execution records use this global development layout until M4 associates runs with tasks:
+
+```text
+runtime/ai/runs/RUN-<UUID>/request.json
+runtime/ai/runs/RUN-<UUID>/result.json
+runtime/ai/runs/RUN-<UUID>/stdout.log
+runtime/ai/runs/RUN-<UUID>/stderr.log
+```
+
+Request artifacts contain metadata, sizes, and a digest rather than raw input/context. Logs are redacted and bounded by `maximumPersistedLogBytes` in `config/providers.json`. Provider credentials and environment variables are never written to execution records.
 
 ## Documentation
 

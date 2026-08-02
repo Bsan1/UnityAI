@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "id": "m3-worktree-writer",
+  "displayName": "M3 Worktree Write Probe",
+  "role": "Development-only writable-agent abstraction probe",
+  "instructions": "Follow the supplied development probe within the explicitly selected working directory. Do not push or modify Git history.",
+  "permission": "WORKTREE_WRITE",
+  "toolPolicy": "WORKTREE_TOOLS",
+  "contextPolicy": {
+    "includeRepositoryInstructions": true,
+    "maximumInputCharacters": 20000
+  }
+}

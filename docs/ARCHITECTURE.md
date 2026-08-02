@@ -1,19 +1,19 @@
 # Architecture
 
-## Current M2 state
+## Current M3 state
 
-M2 remains a small npm workspace with four independently named workspaces:
+M3 remains a small npm workspace with four independently named workspaces:
 
 ```text
 apps/web       React + Vite connectivity page
-apps/server    Local HTTP server, JSON stores, task API, and native-Git safety layer
-packages/core  Task domain plus pure task/Git metadata schema validation
+apps/server    Local HTTP server, task/Git stores, AI execution infrastructure, and adapters
+packages/core  Pure task/Git/agent/model configuration types and validation
 packages/shared Shared HTTP contract types
 ```
 
 The browser still provides only the M0 connectivity page. During development, Vite proxies `/health` to the local server. The server uses Node's built-in HTTP module and exposes direct task commands. No backend framework or database is present.
 
-`packages/core` owns the `Task` entity, state rules/actions, feasibility and Task Contract schemas, and pure Git environment metadata schema. It has no filesystem, child-process, or concrete Git command dependency. Task JSON remains the task source of truth; event history is an audit aid, not event sourcing.
+`packages/core` owns the `Task` entity, state rules/actions, feasibility and Task Contract schemas, pure Git environment metadata, agent definitions, model aliases, reasoning effort, and declarative routing schemas. It has no filesystem, child-process, or concrete Git/provider command dependency. Agent definitions contain behavior and access metadata but no model or provider invocation. Task JSON remains the task source of truth; event history is an audit aid, not event sourcing.
 
 `apps/server` owns the concrete task/Git stores and services. The native Git runner passes argument arrays directly to the installed `git` executable with no shell. Repository inspection resolves the selected external worktree, current branch, base commit, common Git directory, and machine-readable status. Data uses this layout:
 
@@ -30,11 +30,36 @@ Every destructive rollback, cleanup-discard, or task-branch history rewrite deri
 
 `config/defaults.json` contains the two boolean defaults copied into new tasks. M1's supplied feasibility and contract endpoints are development mechanisms only. They do not claim that an agent ran. Recheck moves an eligible task to `ANALYZING`, clears its stale current analysis result, and records the request for M4.
 
-This current structure deliberately contains no AI/provider/agent execution, model routing execution, task implementation, Unity connection, QA, automatic fix execution, merge/push/remote management, or production Git UI.
+M3 adds three explicitly separate concepts:
+
+```text
+AgentDefinition -> behavior, instructions, permission, tools, context, schema
+ModelDefinition -> stable alias, provider ID, provider model name, supported effort
+AIProvider      -> local external-system invocation
+```
+
+`agents/*.json` contains only two small development probes. `config/models.json` contains replaceable model aliases and the documented routing table; `config/providers.json` contains CLI names, timeout, and log bounds. Routing records are validated and exposed but are not executed. `AgentExecutor` requires the caller to provide agent ID, model ID, effort, input/context, and an existing working directory. It resolves registries, verifies the combination, canonicalizes the working directory, assembles the provider-neutral request, invokes the provider, validates structured output with JSON Schema, and stores the normalized run.
+
+The provider registry contains concrete Codex and Claude adapters. Both use a shared process runner with `shell: false`, executable/argument arrays, prompt stdin, bounded capture, timeout, AbortSignal cancellation, exit status, and spawn diagnostics. On Windows, startup resolves installed npm CLI wrappers to their native executable or safe Node entry point instead of passing prompts through `cmd.exe`. Provider-specific flags remain inside their adapter.
+
+Codex uses non-interactive `codex exec`, ephemeral JSONL/final-message output, native output schemas, an explicit model and reasoning effort, an explicit working directory, and a sandbox derived from the agent's permission. Claude uses non-interactive print mode, JSON/schema output, explicit model/effort, no session persistence, and restricted permission/tool flags. Availability checks call only CLI version and local auth-status commands. They report CLI presence separately from confirmed authentication and discard auth-status details beyond the boolean state.
+
+Development runs use this layout:
+
+```text
+runtime/ai/runs/RUN-<UUID>/request.json
+runtime/ai/runs/RUN-<UUID>/result.json
+runtime/ai/runs/RUN-<UUID>/stdout.log
+runtime/ai/runs/RUN-<UUID>/stderr.log
+```
+
+The request record omits raw input/context and stores only character counts and a digest. Provider environment/authentication is never serialized. Result and diagnostic text is redacted before persistence; stdout/stderr use a configured byte bound. The `/ai/execute` endpoint is development-only and accepts no executable or provider flags.
+
+This current structure deliberately does not connect task states to AI execution. It contains no interpretation, real feasibility, AI-generated Task Contract, task-strength routing execution, cross-review workflow, implementation/review/QA/fix orchestration, Unity connection, automatic merge/push, or production AI UI.
 
 ## Planned architecture
 
-The following boundaries guide later milestones. Only the M0-M2 portions described above are implemented.
+The following boundaries guide later milestones. Only the M0-M3 portions described above are implemented.
 
 ### Local application boundary
 
@@ -52,9 +77,9 @@ The server will coordinate application use cases, persistence, process execution
 
 Core types and rules now describe tasks, lifecycle state, Task Contracts, feasibility results, and approval. Later milestones may add QA results and configuration-independent agent roles when required. Domain code does not import a concrete AI provider, Unity bridge, web framework, filesystem, or Git implementation.
 
-### Agent and model boundary
+### Agent, model, and provider boundary
 
-An agent definition owns role, instructions, permissions, tools, context rules, and expected output schema. Separately replaceable configuration assigns a provider, model, and effort to that agent for a selected task strength. Provider adapters will translate provider-neutral requests to Codex, Claude, and possible future providers.
+An agent definition owns role, instructions, permissions, tools, context rules, and expected output schema. Separately replaceable configuration defines provider/model/effort assignments for selected task strengths. M3 provider adapters translate explicit provider-neutral requests to Codex or Claude. M4 will consume routing records; changing a provider model name does not change agent behavior.
 
 ### Target project adapters
 
@@ -62,7 +87,7 @@ The filesystem/native-Git adapter now inspects external repositories and safely 
 
 ### Persistence and configuration
 
-Task persistence now uses plain JSON files under a local runtime-data location. Model routing and other replaceable settings belong in configuration rather than repeated conditionals. A database is not planned until demonstrated need justifies one.
+Task and AI execution persistence use plain JSON/log files under a local runtime-data location. Model routing and provider settings live in configuration rather than repeated conditionals. A database is not planned until demonstrated need justifies one.
 
 ## Dependency direction
 
@@ -71,7 +96,7 @@ Later code should keep dependencies pointing inward:
 ```text
 web -> shared contracts
 server -> core domain + shared contracts
-provider/Git/Unity adapters -> core-defined use cases
+provider/Git/Unity adapters -> core-defined types and use cases
 core domain -> no concrete adapter
 ```
 

@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "m3-readonly-json",
+  "displayName": "M3 Read-only JSON Probe",
+  "role": "Development-only provider abstraction probe",
+  "instructions": "Answer the supplied development probe without modifying files. Return only the requested structured result.",
+  "permission": "READ_ONLY",
+  "toolPolicy": "READ_ONLY_TOOLS",
+  "contextPolicy": {
+    "includeRepositoryInstructions": true,
+    "maximumInputCharacters": 20000
+  },
+  "expectedOutputSchema": {
+    "type": "object",
+    "properties": {
+      "status": { "type": "string", "enum": ["ok"] }
+    },
+    "required": ["status"],
+    "additionalProperties": false
+  }
+}

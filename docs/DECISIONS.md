@@ -70,3 +70,9 @@ Acceptance criteria should use evidence such as compiler and Unity console outpu
 **Decision:** UnityAI refuses to prepare a task Git environment when the selected external repository's original worktree has staged, unstaged, or untracked changes. It does not stash, commit, reset, copy, exclude, or automatically include those changes. The user must resolve them manually and retry.
 
 Destructive Git operations are permitted only in the exact persisted UnityAI-managed task worktree after canonical path, repository, branch, task, and write-owner validation. Finalization may rewrite only the dedicated task branch. Cleanup retains the branch, and no M2 operation merges or pushes.
+
+## D-014: Explicit local provider execution boundary
+
+**Decision:** Agent behavior, model configuration, and provider invocation are separate. M3 callers explicitly select an agent, model alias, reasoning effort, and existing working directory; the executor does not infer task strength, choose a route, or escalate after failure.
+
+Codex and Claude use their installed non-interactive CLIs through provider-local argument construction and normal local authentication. Processes receive executable/argument arrays, bounded output capture, timeouts, and cancellation. Provider flags and arbitrary executables are not exposed by HTTP. Development execution metadata is stored under `runtime/ai/runs`; raw input and authentication state are not persisted, and diagnostic logs are redacted and size-bounded.

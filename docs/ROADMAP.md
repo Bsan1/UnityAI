@@ -1,6 +1,6 @@
 # Roadmap
 
-**M2 - Git Safety Layer is complete. M3 - AI Provider and Agent Abstraction is next.** Milestones describe bounded increments; completing one does not authorize implementation of the next.
+**M3 - AI Provider and Agent Abstraction is complete. M4 - Analysis, Feasibility and Task Contract Pipeline is next.** Milestones describe bounded increments; completing one does not authorize implementation of the next.
 
 ## M0 - Foundation (completed)
 
@@ -32,17 +32,17 @@
 
 **Completion criteria:** Supported repository states are detected; dirty originals are rejected untouched; one task owns each managed worktree; prepare is safely idempotent; status/diff, checkpoints, rollback, final squash, cleanup, and metadata reload are verified in temporary repositories; original branches/worktrees remain unchanged; nothing merges or pushes.
 
-## M3 - AI Provider and Agent Abstraction (next)
+## M3 - AI Provider and Agent Abstraction (completed)
 
 **Goal:** Execute provider-neutral agent definitions using replaceable model routing.
 
-**Major deliverables:** Concrete agent definition format; provider-neutral request/result boundary; Codex adapter; Claude adapter or a clearly isolated unavailable-provider state; configuration-backed routing; structured-output validation.
+**Major deliverables:** File-backed agent definition format; minimal read-only/worktree-write metadata; replaceable provider/model/routing configuration; provider registry; real non-interactive Codex and Claude CLI adapters; safe process runner; explicit AgentExecutor; JSON Schema validation; timeout/cancellation; bounded redacted run artifacts; minimal discovery/execution API; deterministic provider fakes and process tests.
 
-**Explicit non-goals:** Full feasibility/contract pipeline, autonomous code changes, Unity communication, QA loop, dynamic escalation, and additional provider marketplace behavior.
+**Explicit non-goals:** Task interpretation, feasibility/contract generation, task-strength model selection, automatic routing/escalation, cross-review or implementation orchestration, Unity communication, QA/fix loops, provider marketplace behavior, and production AI UI.
 
-**Completion criteria:** The same test agent runs through configured providers without definition changes; every documented routing case resolves; provider errors remain adapter-local; no runtime escalation occurs.
+**Completion criteria:** The same test agent runs through two providers without definition changes; configured models resolve providers and all documented routes validate; CLI arguments remain adapter-local; structured success/failure, provider/process failures, timeout/cancellation, log bounding/redaction, and artifacts are deterministic; available local providers pass one minimal read-only smoke; no task pipeline or runtime escalation exists.
 
-## M4 - Analysis, Feasibility and Task Contract Pipeline
+## M4 - Analysis, Feasibility and Task Contract Pipeline (next)
 
 **Goal:** Turn a user request and current target state into an honest, reviewable Task Contract.
 

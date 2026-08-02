@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "defaultTimeoutMs": 600000,
+  "maximumPersistedLogBytes": 262144,
+  "providers": [
+    {
+      "id": "codex",
+      "displayName": "Codex CLI",
+      "executable": "codex",
+      "enabled": true
+    },
+    {
+      "id": "claude",
+      "displayName": "Claude Code CLI",
+      "executable": "claude",
+      "enabled": true
+    }
+  ]
+}
