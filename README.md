@@ -4,7 +4,7 @@ UnityAI is a standalone, local AI development orchestrator for external Unity ga
 
 ## Current status
 
-The repository has completed **M7 - QA Engine, Batch Failure Reporting, Automatic Fix Loop, and Safe Finalization**. It currently provides:
+The repository has completed **M8 - Player-Level Gameplay QA, Input Automation, Visual Evidence, and Final End-to-End Completion**. It currently provides:
 
 - an npm workspace;
 - a strict core task model with explicit lifecycle transitions and audit history;
@@ -38,11 +38,18 @@ The repository has completed **M7 - QA Engine, Batch Failure Reporting, Automati
 - a fixed internal maximum of three automatic fix executions per orchestration run, with no model escalation;
 - explicit `READY_FOR_GAMEPLAY_QA` handling for required player-input tests that M7 cannot execute;
 - owned-bridge cleanup and one-commit M2 squash finalization only after every required M7-capable test passes and no GAMEPLAY test remains;
+- fresh QA0-QA3 orchestration for gameplay tasks through the same approved read-only QA Agent and routing snapshot;
+- QA-owned virtual Input System keyboard, mouse, and gamepad controls that travel through real project bindings;
+- bounded binding inspection, semantic action-to-control mapping, frame waits, active-scene reload, and release-all cleanup;
+- on-demand bounded Game View PNG evidence and allowlisted read-only runtime probes;
+- an optional fail-closed Windows Game View input fallback that is not exposed through MCP or enabled by default;
+- complete gameplay-session failure batching integrated with the existing exact-route Fix Agent, shared three-fix bound, and full QA restart at STATIC;
+- finalization only after all required QA0-QA3 pass, input/tooling cleanup succeeds, and M2 creates one local task commit;
 - a Node.js/TypeScript HTTP server with health, project, task, Git, AI-development, analysis, workflow, Unity tooling, and QA APIs;
 - small `core`, `shared`, and `unity` TypeScript packages; and
 - product and architecture documentation.
 
-M1's manually supplied feasibility/contract routes and M3's explicit AI route remain development support. M4 analysis still stops for approval; M5 continues only after an explicit implementation start. M7 now consumes `READY_FOR_QA`, but it never simulates player input or marks required GAMEPLAY checks as passed. Input injection, screenshots/vision, and player-like testing remain M8 work. UnityAI still never merges or pushes. M8 is next.
+M1's manually supplied feasibility/contract routes and M3's explicit AI route remain development support. M4 analysis still stops for approval; M5 continues only after an explicit implementation start. M7 consumes `READY_FOR_QA`; M8 consumes `READY_FOR_GAMEPLAY_QA` and reruns QA0-QA3 before final completion. UnityAI still never merges or pushes, and no M9 or later milestone is currently defined.
 
 ## Requirements
 
@@ -69,7 +76,7 @@ npm run dev:web
 
 The server listens on `http://127.0.0.1:3000` by default. The Vite development server proxies the local API routes to it. Set `UNITYAI_PORT` to change the server port, `UNITYAI_RUNTIME_PATH` to use a different runtime-data directory, or `UNITYAI_CONFIG_PATH` to load different task defaults. M3 also supports `UNITYAI_AGENTS_PATH`, `UNITYAI_MODELS_CONFIG_PATH`, and `UNITYAI_PROVIDERS_CONFIG_PATH`; configuration changes require a restart.
 
-Open `http://localhost:5173` for the local UI. Add a Git project path, create and analyze a task, approve its contract, then explicitly start implementation. Long-running implementation, review, QA, and fix work continues in the local server while the UI polls persisted progress. A `READY_FOR_QA` task can start M7 QA; batch failures, automatic-fix progress, gameplay-pending status, and a finalized local task commit are shown without exposing model reasoning.
+Open `http://localhost:5173` for the local UI. Add a Git project path, create and analyze a task, approve its contract, then explicitly start implementation. Long-running implementation, review, QA, and fix work continues in the local server while the UI polls persisted progress. A `READY_FOR_QA` task starts QA0-QA2; a gameplay-pending task explicitly starts the fresh QA0-QA3 run. Batch failures, automatic-fix progress, gameplay evidence summaries, and the finalized local task commit are shown without exposing model reasoning.
 
 ## Task and M4 analysis API
 
@@ -183,7 +190,7 @@ The source bridge is [`unity/Packages/com.unityai.editor-bridge`](unity/Packages
 
 The Editor listener binds only `127.0.0.1` on a random port and writes its random session token to `Library/UnityAI/bridge-session.json`. Every versioned newline-JSON request authenticates. Network threads only validate/enqueue; known Unity API commands execute through the Editor main-thread update queue. Request/response, console, hierarchy, object, and persisted metadata sizes are bounded. The bridge exposes no arbitrary C#, reflection/menu invocation, filesystem, shell, or process command.
 
-Implemented commands are `bridge.ping`, `editor.status`, `editor.requestCompilation`, `play.enter`, `play.exit`, `play.setPaused`, `console.get`, `scene.summary`, `scene.hierarchy`, and `object.snapshot`. General console capture is explicitly partial (`complete: false`) because it contains bounded logs observed during the bridge session. Bridge version 0.2.0 additionally records bounded compiler messages and authoritative error/warning counts for an identified requested compilation through public `CompilationPipeline` callbacks; this does not add another bridge or MCP command. Unity integration has been live-tested only with Unity **6000.3.11f1 on Windows**; other versions are not claimed as tested.
+The M6 command surface is `bridge.ping`, `editor.status`, `editor.requestCompilation`, `play.enter`, `play.exit`, `play.setPaused`, `console.get`, `scene.summary`, `scene.hierarchy`, and `object.snapshot`. M8 bridge 0.3.0 adds active-scene reload, explicit Input System capability/binding/action/control/release commands, on-demand Game View screenshots, and bounded runtime probes. General console capture is explicitly partial (`complete: false`) because it contains bounded logs observed during the bridge session. Bounded compiler messages and authoritative error/warning counts come from public `CompilationPipeline` callbacks. Unity integration has been live-tested only with Unity **6000.3.11f1 on Windows**; the M8 virtual-device path was exercised with Input System **1.17.0**. Other versions are not claimed as tested.
 
 ### Unity HTTP API
 
@@ -208,7 +215,7 @@ The project registry accepts an optional `unityEditorPath`. Removing a registry 
 node apps/unity-mcp/dist/main.js --projectPath <managed-worktree>
 ```
 
-It reuses `UnityBridgeClient` and exposes `unity_ping`, `unity_editor_status`, `unity_request_compilation`, `unity_enter_play_mode`, `unity_exit_play_mode`, `unity_set_play_mode_paused`, `unity_console`, `unity_scene_summary`, `unity_scene_hierarchy`, and `unity_object_snapshot`. It does not install/launch the bridge, decide pass/fail, or expose arbitrary RPC, C#, shell, or filesystem tools.
+It reuses `UnityBridgeClient`. M6's ten tools remain; M8 adds named tools for active-scene reload, input capabilities/bindings, virtual keyboard/mouse/gamepad controls, semantic actions, input cleanup, Unity-frame waits, Game View screenshots, and bounded runtime probes. It does not install/launch the bridge, decide pass/fail, or expose arbitrary RPC, C#, gameplay-method invocation, reflection, shell, filesystem, or desktop-control tools.
 
 The bounded live smoke is available for an installed Editor after a normal build:
 
@@ -258,6 +265,31 @@ npx tsx scripts/liveM7Smoke.ts --unityExecutable "C:\\Program Files\\Unity\\Hub\
 ```
 
 It never opens a registered/user game project. Do not repeat it merely to reconfirm a successful paid-provider run.
+
+## M8 player-level gameplay QA
+
+`POST /tasks/:id/gameplay-qa/start` accepts only `READY_FOR_GAMEPLAY_QA`. It starts a fresh full session—STATIC, STRUCTURAL, RUNTIME, then GAMEPLAY—using the already approved QA route. The read-only QA Agent can inspect bounded bindings, enter Play Mode, drive QA-owned virtual Input System controls, wait in Unity frames, inspect state, and request screenshots/probes. Semantic action helpers resolve real binding paths and then send virtual control state; they do not call gameplay methods or InputAction callbacks.
+
+Keyboard, mouse, and gamepad primitives are explicit. Release-all removes only UnityAI-owned virtual devices and runs after normal completion, failures, cancellation, Play Mode exit, and finalization. The optional Windows fallback is orchestrator-only, disabled by default, and refuses input unless an owned Unity process, exact worktree, Game View window, and foreground PID are all verified. It is not a generic desktop automation API.
+
+One gameplay cycle attempts every reasonably executable required test before reporting. `BLOCKED` and technical outcomes cannot complete a task. Product failures join M7's existing Fix path; Fix uses the exact approved Implementation route and shared correction count, and every fix restarts QA at STATIC. A full QA0-QA3 pass releases input, exits Play Mode, stops only an owned Editor, removes bridge/screenshot tooling, verifies a clean product diff, and creates one squashed local task commit before `COMPLETED`.
+
+### M8 gameplay QA HTTP API
+
+| Method | Route | Purpose |
+| --- | --- | --- |
+| `GET` | `/tasks/:id/gameplay-qa` | Read persisted QA sessions/reports/fixes for gameplay-ready tasks |
+| `POST` | `/tasks/:id/gameplay-qa/start` | Queue one guarded fresh QA0-QA3 run |
+| `POST` | `/tasks/:id/gameplay-qa/cancel` | Abort the active gameplay QA provider run and safely release runtime input |
+| `POST` | `/tasks/:id/qa/fix-and-retest` | Reuse the existing complete-batch Fix path and restart full QA from STATIC |
+
+After a normal build, the bounded live M8 integration smoke uses one disposable Git/Unity/Input System fixture and one real Codex QA execution:
+
+```bash
+npx tsx scripts/liveM8Smoke.ts --unityExecutable "C:\\Program Files\\Unity\\Hub\\Editor\\6000.3.11f1\\Editor\\Unity.exe"
+```
+
+It never opens a registered/user game project, uses virtual Input System input as the primary path, captures one bounded screenshot when useful, removes temporary tooling, verifies one final task commit, and never merges or pushes. Do not rerun a successful paid smoke merely for confirmation.
 
 ## Documentation
 

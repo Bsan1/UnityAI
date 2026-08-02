@@ -141,8 +141,9 @@ class ScenarioProvider implements AIProvider {
 }
 
 interface FakeUnityOptions {
-  readonly compileErrors?: boolean;
+  readonly compileErrors?: boolean | (() => boolean);
   readonly disconnect?: boolean;
+  readonly gameplayDisconnect?: boolean;
   readonly removalFails?: boolean;
 }
 
@@ -156,6 +157,10 @@ class FakeUnityEnvironment {
   exitCalls = 0;
   stopCalls = 0;
   removeCalls = 0;
+  releaseInputCalls = 0;
+  inputCapabilityCalls = 0;
+  bindingCalls = 0;
+  frameCount = 0;
   private readonly taskId: string;
   private readonly worktree: string;
   private readonly options: FakeUnityOptions;
@@ -171,6 +176,7 @@ class FakeUnityEnvironment {
       isUpdating: false,
       activeScene: "SampleScene",
       activePlatform: "StandaloneWindows64",
+      frameCount: this.playing ? ++this.frameCount : this.frameCount,
       ...(this.compilationRequests === 0
         ? {}
         : {
@@ -179,10 +185,10 @@ class FakeUnityEnvironment {
               requestedAt: new Date().toISOString(),
               completed: true,
               completedAt: new Date().toISOString(),
-              errorCount: this.options.compileErrors ? 1 : 0,
+              errorCount: this.hasCompileErrors() ? 1 : 0,
               warningCount: 0,
               messagesTruncated: false,
-              messages: this.options.compileErrors
+              messages: this.hasCompileErrors()
                 ? [{
                     severity: "error" as const,
                     message: "fixture compile failure",
@@ -201,7 +207,7 @@ class FakeUnityEnvironment {
       },
       console: async () => {
         this.assertConnected();
-        const entries: UnityConsoleEntry[] = this.options.compileErrors
+        const entries: UnityConsoleEntry[] = this.hasCompileErrors()
           ? Array.from({ length: this.compilationRequests }, (_, index) => ({
               severity: "Error",
               message: `Assets/Feature.cs(1,1): error CS100${index}: fixture compile failure`,
@@ -272,6 +278,45 @@ class FakeUnityEnvironment {
         this.exitCalls += 1;
         this.playing = false;
         return { requested: true };
+      },
+      inputCapabilities: async () => {
+        this.assertConnected();
+        this.inputCapabilityCalls += 1;
+        if (this.options.gameplayDisconnect) {
+          throw new UnityIntegrationError("UNITY_BRIDGE_NOT_CONNECTED", "Gameplay input bridge disconnected.");
+        }
+        return {
+          inputSystemAvailable: true,
+          legacyInputAvailable: false,
+          activeInputHandling: "NEW",
+          virtualDevicesSupported: ["KEYBOARD", "MOUSE", "GAMEPAD"],
+          qaOwnedDevices: [],
+          osFallback: "ORCHESTRATOR_ONLY",
+        };
+      },
+      inputBindings: async () => {
+        this.assertConnected();
+        this.bindingCalls += 1;
+        return {
+          complete: true,
+          count: 1,
+          hasMore: false,
+          bindings: [{
+            actionMap: "Player",
+            action: "Dash",
+            enabled: true,
+            bindingName: "",
+            path: "<Keyboard>/space",
+            effectivePath: "<Keyboard>/space",
+            groups: "Keyboard",
+            isComposite: false,
+            isPartOfComposite: false,
+          }],
+        };
+      },
+      releaseAllInputs: async () => {
+        this.releaseInputCalls += 1;
+        return { releasedControls: 1, removedDevices: 1, frameCount: this.frameCount };
       },
     } as unknown as UnityBridgeClient;
   }
@@ -377,6 +422,12 @@ class FakeUnityEnvironment {
       throw new UnityIntegrationError("UNITY_BRIDGE_NOT_CONNECTED", "Fake bridge disconnected.");
     }
   }
+
+  private hasCompileErrors(): boolean {
+    return typeof this.options.compileErrors === "function"
+      ? this.options.compileErrors()
+      : this.options.compileErrors === true;
+  }
 }
 
 interface Harness {
@@ -396,7 +447,7 @@ interface Harness {
 
 const passResult = (
   id: string,
-  category: "STATIC" | "STRUCTURAL" | "RUNTIME",
+  category: "STATIC" | "STRUCTURAL" | "RUNTIME" | "GAMEPLAY",
 ): QAAgentTestResult => ({
   testId: id,
   category,
@@ -404,14 +455,14 @@ const passResult = (
   summary: `${id} passed.`,
   expected: `${id} behaves as contracted.`,
   observed: `${id} was observed with the expected state.`,
-  evidence: [{ kind: category === "STATIC" ? "FILE" : category === "STRUCTURAL" ? "OBJECT" : "PLAY_MODE", summary: `${id} evidence.` }],
+  evidence: [{ kind: category === "STATIC" ? "FILE" : category === "STRUCTURAL" ? "OBJECT" : category === "GAMEPLAY" ? "INPUT" : "PLAY_MODE", summary: `${id} evidence.` }],
   likelyArea: [],
   blockingReason: "NONE",
 });
 
 const failResult = (
   id: string,
-  category: "STATIC" | "STRUCTURAL" | "RUNTIME",
+  category: "STATIC" | "STRUCTURAL" | "RUNTIME" | "GAMEPLAY",
 ): QAAgentTestResult => ({
   testId: id,
   category,
@@ -419,7 +470,7 @@ const failResult = (
   summary: `${id} failed.`,
   expected: `${id} expected behavior.`,
   observed: `${id} observed failure.`,
-  evidence: [{ kind: category === "STATIC" ? "FILE" : category === "STRUCTURAL" ? "OBJECT" : "PLAY_MODE", summary: `${id} failure evidence.` }],
+  evidence: [{ kind: category === "STATIC" ? "FILE" : category === "STRUCTURAL" ? "OBJECT" : category === "GAMEPLAY" ? "INPUT" : "PLAY_MODE", summary: `${id} failure evidence.` }],
   likelyArea: ["Assets/Feature.cs"],
   blockingReason: "NONE",
 });
@@ -427,7 +478,7 @@ const failResult = (
 const finding = (
   id: string,
   testId: string,
-  source: "STATIC" | "STRUCTURAL" | "RUNTIME",
+  source: "STATIC" | "STRUCTURAL" | "RUNTIME" | "GAMEPLAY",
 ): QAAgentFinding => ({
   id,
   severity: "blocking" as const,
@@ -438,12 +489,12 @@ const finding = (
   reproduction: [`Run ${testId}.`],
   expected: "Expected state.",
   observed: "Observed defect.",
-  evidence: [{ kind: source === "STATIC" ? "FILE" : source === "STRUCTURAL" ? "OBJECT" : "PLAY_MODE", summary: `${testId} finding evidence.` }],
+  evidence: [{ kind: source === "STATIC" ? "FILE" : source === "STRUCTURAL" ? "OBJECT" : source === "GAMEPLAY" ? "INPUT" : "PLAY_MODE", summary: `${testId} finding evidence.` }],
   suspectedArea: ["Assets/Feature.cs"],
   source,
 });
 
-const passOutput = (tests: readonly { readonly id: string; readonly category: "STATIC" | "STRUCTURAL" | "RUNTIME" }[]): QAAgentOutput => ({
+const passOutput = (tests: readonly { readonly id: string; readonly category: "STATIC" | "STRUCTURAL" | "RUNTIME" | "GAMEPLAY" }[]): QAAgentOutput => ({
   summary: "Every supplied M7 test passed with evidence.",
   results: tests.map((test) => passResult(test.id, test.category)),
   findings: [],
@@ -1073,4 +1124,255 @@ test("M7 HTTP API starts, lists, reads, and cancels only the explicit QA workflo
     server.close();
     await once(server, "close");
   }
+});
+
+const m8ContractTests = [
+  { id: "TEST-001", category: "STATIC" as const, description: "Gameplay source remains scoped." },
+  { id: "TEST-002", category: "STRUCTURAL" as const, description: "Player input component exists." },
+  { id: "TEST-003", category: "RUNTIME" as const, description: "Player initializes in Play Mode." },
+  { id: "TEST-004", category: "GAMEPLAY" as const, description: "Space performs a dash." },
+  { id: "TEST-005", category: "GAMEPLAY" as const, description: "Cooldown rejects an immediate second dash." },
+  { id: "TEST-006", category: "GAMEPLAY" as const, description: "Dash works after the cooldown." },
+];
+
+const m8ExecutionTests = m8ContractTests.map(({ id, category }) => ({ id, category }));
+const m7PartOfM8 = m8ExecutionTests.filter((entry) => entry.category !== "GAMEPLAY");
+
+test("M8 full gameplay pass reruns QA0-QA3, uses gameplay MCP, releases input, finalizes once, and leaves original untouched", async () => {
+  const visualPass: QAAgentOutput = {
+    ...passOutput(m8ExecutionTests),
+    results: m8ExecutionTests.map((entry) => entry.id === "TEST-004"
+      ? {
+          ...passResult(entry.id, entry.category),
+          evidence: [
+            { kind: "INPUT", summary: "Space was sent through the bound virtual keyboard." },
+            { kind: "PROBE", summary: "Player transform advanced after the dash." },
+            { kind: "SCREENSHOT", summary: "Bounded Game View evidence shows the moved player." },
+          ],
+        }
+      : passResult(entry.id, entry.category)),
+  };
+  const harness = await createHarness({
+    outputs: [passOutput(m7PartOfM8), visualPass],
+    tests: m8ContractTests,
+  });
+  const originalReadme = await readFile(join(harness.repositoryRoot, "README.md"), "utf8");
+
+  await harness.qa.start(harness.task.id);
+  assert.equal((await harness.qa.waitForIdle(harness.task.id)).state, "READY_FOR_GAMEPLAY_QA");
+  await harness.qa.startGameplay(harness.task.id);
+  const completed = await harness.qa.waitForIdle(harness.task.id);
+  assert.equal(completed.state, "COMPLETED");
+
+  const artifacts = await harness.qa.get(harness.task.id);
+  assert.equal(artifacts.sessions.length, 2);
+  assert.equal(artifacts.latestReport?.outcome, "PASS");
+  assert.equal(artifacts.latestSession?.results.filter((result) => result.category === "GAMEPLAY").every((result) => result.status === "PASS"), true);
+  assert.equal(artifacts.latestSession?.evidence.some((entry) => entry.kind === "SCREENSHOT"), true);
+  const gameplayRequest = harness.provider.requests.filter((request) => request.agent.id === "qa").at(-1);
+  assert.equal(gameplayRequest?.agent.permission, "READ_ONLY");
+  assert.equal(gameplayRequest?.mcpServers?.[0]?.allowedTools.includes("unity_input_action"), true);
+  assert.equal(gameplayRequest?.mcpServers?.[0]?.allowedTools.includes("unity_game_view_screenshot"), true);
+  assert.equal(gameplayRequest?.mcpServers?.[0]?.allowedTools.some((name) => /csharp|shell|filesystem|arbitrary|desktop/u.test(name)), false);
+  assert.ok(harness.unity.releaseInputCalls >= 1);
+  assert.equal(harness.unity.playing, false);
+  const environment = await harness.git.getEnvironment(harness.task.id);
+  assert.equal(environment?.status, "FINALIZED");
+  assert.equal(
+    (await harness.runner.runChecked(["rev-list", "--count", `${harness.baseCommit}..${environment?.taskBranch}`], { cwd: harness.repositoryRoot })).stdout.trim(),
+    "1",
+  );
+  assert.equal((await harness.runner.runChecked(["rev-parse", "main"], { cwd: harness.repositoryRoot })).stdout.trim(), harness.baseCommit);
+  assert.equal(await readFile(join(harness.repositoryRoot, "README.md"), "utf8"), originalReadme);
+  assert.equal((await harness.runner.runChecked(["status", "--porcelain"], { cwd: harness.repositoryRoot })).stdout, "");
+});
+
+test("M8 HTTP API exposes only explicit gameplay QA read, start, and cancel operations", async () => {
+  let releaseGameplay: (() => void) | undefined;
+  const gameplayGate = new Promise<void>((resolvePromise) => {
+    releaseGameplay = resolvePromise;
+  });
+  const harness = await createHarness({
+    outputs: [],
+    tests: m8ContractTests,
+    onQA: async (_request, index) => {
+      if (index === 0) {
+        return passOutput(m7PartOfM8);
+      }
+      await gameplayGate;
+      return passOutput(m8ExecutionTests);
+    },
+  });
+  await harness.qa.start(harness.task.id);
+  assert.equal((await harness.qa.waitForIdle(harness.task.id)).state, "READY_FOR_GAMEPLAY_QA");
+  const m5 = {
+    qa: harness.qa,
+    projects: {},
+    settings: {},
+    workflow: {},
+    orchestrator: {},
+  } as unknown as M5ServerServices;
+  const server = createUnityAiServer(harness.tasks, harness.git, undefined, undefined, m5);
+  server.listen(0, "127.0.0.1");
+  await once(server, "listening");
+  const address = server.address();
+  assert.ok(address !== null && typeof address === "object");
+  const base = `http://127.0.0.1:${address.port}/tasks/${harness.task.id}/gameplay-qa`;
+  try {
+    assert.equal((await fetch(base)).status, 200);
+    assert.equal((await fetch(`${base}/start`, { method: "POST" })).status, 202);
+    assert.equal((await fetch(`${base}/start`, { method: "POST" })).status, 409);
+    releaseGameplay?.();
+    await harness.qa.waitForIdle(harness.task.id);
+    const cancel = await fetch(`${base}/cancel`, { method: "POST" });
+    assert.equal(cancel.status, 202);
+    assert.equal(((await cancel.json()) as { cancelRequested: boolean }).cancelRequested, false);
+  } finally {
+    server.close();
+    await once(server, "close");
+  }
+});
+
+test("M8 gameplay completes all ordinary tests and batches multiple failures before Automatic Fixes OFF stops", async () => {
+  const gameplayFailure: QAAgentOutput = {
+    summary: "All gameplay scenarios were attempted; two failed.",
+    results: m8ExecutionTests.map((entry) => entry.id === "TEST-005" || entry.id === "TEST-006"
+      ? failResult(entry.id, entry.category)
+      : passResult(entry.id, entry.category)),
+    findings: [
+      finding("FAIL-GP-001", "TEST-005", "GAMEPLAY"),
+      finding("FAIL-GP-002", "TEST-006", "GAMEPLAY"),
+    ],
+  };
+  const harness = await createHarness({
+    outputs: [passOutput(m7PartOfM8), gameplayFailure],
+    tests: m8ContractTests,
+    automaticFixesEnabled: false,
+  });
+  await harness.qa.start(harness.task.id);
+  await harness.qa.waitForIdle(harness.task.id);
+  await harness.qa.startGameplay(harness.task.id);
+  assert.equal((await harness.qa.waitForIdle(harness.task.id)).state, "FAILED");
+  const artifacts = await harness.qa.get(harness.task.id);
+  assert.equal(artifacts.latestReport?.summary.failed, 2);
+  assert.deepEqual(artifacts.latestReport?.findings.map((entry) => entry.id), ["FAIL-GP-001", "FAIL-GP-002"]);
+  assert.equal(artifacts.latestReport?.results.find((entry) => entry.testId === "TEST-006")?.status, "FAIL");
+  assert.equal(harness.provider.requests.filter((request) => request.agent.id === "fix").length, 0);
+  assert.equal((await harness.git.getEnvironment(harness.task.id))?.status, "ACTIVE");
+});
+
+test("M8 automatic gameplay fix receives the complete batch and full retest restarts at STATIC before finalization", async () => {
+  const gameplayFailure: QAAgentOutput = {
+    summary: "Two gameplay defects after a complete session.",
+    results: m8ExecutionTests.map((entry) => entry.id === "TEST-004" || entry.id === "TEST-005"
+      ? failResult(entry.id, entry.category)
+      : passResult(entry.id, entry.category)),
+    findings: [
+      finding("FAIL-GP-001", "TEST-004", "GAMEPLAY"),
+      finding("FAIL-GP-002", "TEST-005", "GAMEPLAY"),
+    ],
+  };
+  const harness = await createHarness({
+    outputs: [passOutput(m7PartOfM8), gameplayFailure, passOutput(m8ExecutionTests)],
+    tests: m8ContractTests,
+  });
+  await harness.qa.start(harness.task.id);
+  await harness.qa.waitForIdle(harness.task.id);
+  await harness.qa.startGameplay(harness.task.id);
+  const completed = await harness.qa.waitForIdle(harness.task.id);
+  assert.equal(completed.state, "COMPLETED");
+  const artifacts = await harness.qa.get(harness.task.id);
+  assert.equal(artifacts.fixes.length, 1);
+  assert.equal(artifacts.sessions.length, 3);
+  assert.equal(artifacts.sessions.at(-1)?.results.find((entry) => entry.testId === "QA0-COMPILATION")?.status, "PASS");
+  assert.equal(artifacts.sessions.at(-1)?.results.find((entry) => entry.testId === "TEST-006")?.status, "PASS");
+  const fixRequest = harness.provider.requests.find((request) => request.agent.id === "fix");
+  assert.match(fixRequest?.prompt ?? "", /FAIL-GP-001/u);
+  assert.match(fixRequest?.prompt ?? "", /FAIL-GP-002/u);
+  assert.equal(artifacts.fixes[0]?.modelId, completed.taskContract?.executionPlan?.implementation.modelId);
+  assert.equal(artifacts.fixes[0]?.effort, completed.taskContract?.executionPlan?.implementation.effort);
+  assert.equal(harness.unity.compilationRequests, 3);
+});
+
+test("M8 gameplay fix regression is caught by fresh compilation and blocks gameplay instead of reusing PASS", async () => {
+  let compileBroken = false;
+  const gameplayFailure: QAAgentOutput = {
+    summary: "Gameplay defect found.",
+    results: m8ExecutionTests.map((entry) => entry.id === "TEST-004"
+      ? failResult(entry.id, entry.category)
+      : passResult(entry.id, entry.category)),
+    findings: [finding("FAIL-GP-001", "TEST-004", "GAMEPLAY")],
+  };
+  const harness = await createHarness({
+    outputs: [],
+    tests: m8ContractTests,
+    unity: { compileErrors: () => compileBroken },
+    automaticFixLimit: 1,
+    onFix: async (request) => {
+      compileBroken = true;
+      const path = join(request.workingDirectory, "Assets", "Feature.cs");
+      await writeFile(path, `${await readFile(path, "utf8")}// broken gameplay fix\n`, "utf8");
+    },
+    onQA: async (_request, index) => {
+      if (index === 0) return passOutput(m7PartOfM8);
+      if (index === 1) return gameplayFailure;
+      return passOutput(m8ExecutionTests.filter((entry) => entry.category === "STATIC" || entry.category === "STRUCTURAL"));
+    },
+  });
+  await harness.qa.start(harness.task.id);
+  await harness.qa.waitForIdle(harness.task.id);
+  await harness.qa.startGameplay(harness.task.id);
+  const failed = await harness.qa.waitForIdle(harness.task.id);
+  assert.equal(failed.state, "FAILED");
+  const session = (await harness.qa.get(harness.task.id)).latestSession;
+  assert.equal(session?.results.find((entry) => entry.testId === "QA0-COMPILATION")?.status, "FAIL");
+  assert.equal(session?.results.find((entry) => entry.testId === "TEST-004")?.status, "BLOCKED");
+  assert.equal(session?.results.find((entry) => entry.testId === "TEST-004")?.blockingReason, "COMPILATION_FAILED");
+  assert.equal((await harness.git.getEnvironment(harness.task.id))?.status, "ACTIVE");
+});
+
+test("M8 unsupported input remains BLOCKED and a gameplay bridge failure stays technical with no Fix", async () => {
+  const blocked: QAAgentOutput = {
+    summary: "One required binding cannot be driven safely.",
+    results: m8ExecutionTests.map((entry) => entry.id === "TEST-005"
+      ? {
+          testId: entry.id,
+          category: entry.category,
+          status: "BLOCKED",
+          summary: "Binding is unsupported.",
+          expected: "Drive the approved gameplay action.",
+          observed: "No supported virtual binding and guarded OS focus was unavailable.",
+          evidence: [],
+          likelyArea: ["Input bindings"],
+          blockingReason: "INPUT_BINDING_UNSUPPORTED",
+        }
+      : passResult(entry.id, entry.category)),
+    findings: [],
+  };
+  const blockedHarness = await createHarness({
+    outputs: [passOutput(m7PartOfM8), blocked],
+    tests: m8ContractTests,
+    automaticFixesEnabled: false,
+  });
+  await blockedHarness.qa.start(blockedHarness.task.id);
+  await blockedHarness.qa.waitForIdle(blockedHarness.task.id);
+  await blockedHarness.qa.startGameplay(blockedHarness.task.id);
+  assert.equal((await blockedHarness.qa.waitForIdle(blockedHarness.task.id)).state, "FAILED");
+  assert.equal((await blockedHarness.qa.get(blockedHarness.task.id)).latestReport?.blockedTests.includes("TEST-005"), true);
+  assert.equal((await blockedHarness.git.getEnvironment(blockedHarness.task.id))?.status, "ACTIVE");
+
+  const technicalHarness = await createHarness({
+    outputs: [passOutput(m7PartOfM8)],
+    tests: m8ContractTests,
+    unity: { gameplayDisconnect: true },
+  });
+  await technicalHarness.qa.start(technicalHarness.task.id);
+  await technicalHarness.qa.waitForIdle(technicalHarness.task.id);
+  await technicalHarness.qa.startGameplay(technicalHarness.task.id);
+  assert.equal((await technicalHarness.qa.waitForIdle(technicalHarness.task.id)).state, "FAILED");
+  const technical = await technicalHarness.qa.get(technicalHarness.task.id);
+  assert.equal(technical.latestReport?.outcome, "TECHNICAL_FAILURE");
+  assert.equal(technicalHarness.provider.requests.filter((request) => request.agent.id === "fix").length, 0);
+  assert.ok(technicalHarness.unity.releaseInputCalls >= 1);
+  assert.equal((await technicalHarness.git.getEnvironment(technicalHarness.task.id))?.status, "ACTIVE");
 });

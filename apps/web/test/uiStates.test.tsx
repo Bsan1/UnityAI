@@ -351,7 +351,7 @@ test("M7 QA UI renders progress, a complete evidence-backed batch, gameplay pend
     />,
   );
   assert.match(pendingMarkup, /1 required player-level gameplay test/u);
-  assert.match(pendingMarkup, /M8 player-like QA is required/u);
+  assert.match(pendingMarkup, /Run gameplay QA/u);
 
   const completedMarkup = renderToStaticMarkup(
     <CompletedTask
@@ -392,6 +392,21 @@ test("dirty-worktree errors are translated into actionable UI copy", () => {
   );
   assert.match(message, /will not modify or stash/u);
   assert.match(message, /Commit or clean/u);
+});
+
+test("M8 gameplay safety errors explain blocked input and unsafe OS focus", () => {
+  assert.match(
+    userMessageForError(new ApiError("INPUT_BINDING_UNSUPPORTED", "unsupported")),
+    /remains blocked/u,
+  );
+  assert.match(
+    userMessageForError(new ApiError("OS_INPUT_FOCUS_UNSAFE", "unsafe")),
+    /refused to send operating-system input/u,
+  );
+  assert.match(
+    userMessageForError(new ApiError("SCREENSHOT_CAPTURE_FAILED", "failed")),
+    /technical failure/u,
+  );
 });
 
 test("M6 project and task tooling UI renders Unity status without claiming QA", () => {

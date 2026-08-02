@@ -1,6 +1,6 @@
 # Roadmap
 
-**M7 - QA and Automatic Fix Loop is complete. M8 - Player-Level Gameplay QA is next.** Milestones describe bounded increments; completing one does not authorize implementation of the next.
+**M8 - Player-Level Gameplay QA is complete. The currently planned M0-M8 roadmap is complete; no M9 is defined.** Milestones describe bounded increments and do not authorize unrelated scope expansion.
 
 ## M0 - Foundation (completed)
 
@@ -82,12 +82,12 @@
 
 **Completion criteria:** Every reasonably executable M7 test is attempted and evidence-normalized before one batch is produced; independent failures continue while prerequisite failures block only dependent tests; Fix receives the complete batch and exact approved Implementation route; every fix checkpoint excludes temporary Unity tooling and causes full fresh QA; automatic correction stops after three fixes; technical failures never trigger Fix/escalation; required GAMEPLAY remains pending without finalization; otherwise tooling removal and M2 squash produce exactly one local task commit before `COMPLETED`; original worktree, original branch, merge, and push remain untouched.
 
-## M8 - Player-Level Gameplay QA
+## M8 - Player-Level Gameplay QA (completed)
 
 **Goal:** Validate requested gameplay behavior from a player-like perspective using observable evidence.
 
-**Major deliverables:** QA3 scenario plans derived from acceptance criteria; input-driving support; Game View capture; runtime probes and state correlation; gameplay evidence reports; clear limits for unsupported judgments.
+**Major deliverables:** QA3 execution through the existing read-only QA Agent and approved QA route; QA-owned Unity Input System virtual keyboard, mouse, and gamepad devices; bounded binding inspection and semantic action resolution through real bindings; frame-based timing and controlled scene reload; on-demand Game View PNG evidence; bounded read-only runtime probes; optional guarded Windows input fallback; explicit MCP tools; complete gameplay-session batching; shared M7 Fix/full-retest policy; gameplay API/UI; tooling cleanup and one-commit finalization.
 
-**Explicit non-goals:** General game-playing intelligence, unbounded autonomous exploration, replacing human creative judgment, and cloud test farms.
+**Explicit non-goals:** Direct gameplay-method or InputAction-callback invocation; arbitrary C#, reflection mutation, filesystem, shell, or desktop-control MCP tools; continuous screenshots/video; general game-playing intelligence; unbounded autonomous exploration; permanent game dependencies; cloud test farms; model escalation; merge; and push.
 
-**Completion criteria:** Representative gameplay tasks can be exercised through inputs; outcomes are tied to acceptance criteria and evidence; inconclusive results are reported honestly; QA3 participates in the existing batched QA/fix flow.
+**Completion criteria:** Representative gameplay tasks are exercised through real Input System bindings and evidence-backed observations; all reasonably executable gameplay checks finish before one report; blocked/technical outcomes remain honest; gameplay defects join the existing exact-route Fix path and restart QA from STATIC; all required QA0-QA3 must pass before temporary tooling removal, M2 one-commit finalization, and `COMPLETED`; original branches/worktrees remain untouched and nothing merges or pushes.

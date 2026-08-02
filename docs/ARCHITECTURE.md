@@ -1,6 +1,6 @@
 # Architecture
 
-## Current M7 state
+## Current M8 state
 
 UnityAI remains a small npm workspace with six independently named workspaces:
 
@@ -13,9 +13,9 @@ packages/shared Shared HTTP contract types
 packages/unity Unity project metadata, Editor resolution, bridge protocol, client, and validation
 ```
 
-The browser provides project registration, task creation/history, analysis and blocked actions, Task Contract editing/approval, implementation start, polling progress, implementation/review results, M7 QA/fix progress, batch reports, gameplay-pending status, and finalized commit details. Vite proxies local API paths to the server. The server still uses Node's built-in HTTP module; no backend framework or database is present.
+The browser provides project registration, task creation/history, analysis and blocked actions, Task Contract editing/approval, implementation start, polling progress, implementation/review results, QA0-QA3/fix progress, batch reports, gameplay start, evidence summaries, and finalized commit details. Vite proxies local API paths to the server. The server still uses Node's built-in HTTP module; no backend framework or database is present.
 
-`packages/core` owns the `Task` entity, state rules/actions, feasibility and Task Contract schemas, pure Git environment metadata, agent definitions, model aliases, reasoning effort, declarative routing schemas, and M7 QA session/result/finding/evidence/fix schemas. M4 adds pure interpretation/feasibility classifiers and deterministic planning; M7 adds explicit QA/fix transitions and validation without importing filesystem, child-process, concrete Git/provider, or Unity mechanics. Agent definitions contain behavior and access metadata but no model or provider invocation. Task JSON remains the task source of truth; event history is an audit aid, not event sourcing.
+`packages/core` owns the `Task` entity, state rules/actions, feasibility and Task Contract schemas, pure Git environment metadata, agent definitions, model aliases, reasoning effort, declarative routing schemas, and QA session/result/finding/evidence/fix schemas for all four QA categories. M4 adds pure interpretation/feasibility classifiers and deterministic planning; M7/M8 add explicit QA/fix/gameplay transitions and validation without importing filesystem, child-process, concrete Git/provider, or Unity mechanics. Agent definitions contain behavior and access metadata but no model or provider invocation. Task JSON remains the task source of truth; event history is an audit aid, not event sourcing.
 
 `apps/server` owns the concrete task/Git stores and services. The native Git runner passes argument arrays directly to the installed `git` executable with no shell. Repository inspection resolves the selected external worktree, current branch, base commit, common Git directory, and machine-readable status. Data uses this layout:
 
@@ -164,37 +164,32 @@ Ordinary defects are batched only after all reasonably executable tests finish. 
 
 Required GAMEPLAY checks are deterministically `NOT_RUN / REQUIRES_M8_GAMEPLAY_QA`. They lead to `READY_FOR_GAMEPLAY_QA`, never `COMPLETED` or Git finalization. A fully M7-verifiable PASS exits Play Mode, stops only an owned Editor, removes marker-verified bridge tooling, checks the final diff, invokes M2 one-commit squash, then transitions to `COMPLETED`. The task branch remains local; no code path merges or pushes, and the original worktree remains outside every write/fix/finalization operation.
 
-## Planned M8 architecture
+## M8 gameplay QA architecture
 
-The following boundary guides M8. M0-M7 described above are implemented; player-like gameplay QA is not.
+M8 extends the existing bridge, MCP facade, and `QAOrchestrator`; it does not add a parallel gameplay workflow or another AI planning call:
 
-### Local application boundary
+```text
+READY_FOR_GAMEPLAY_QA -> TESTING
+  -> fresh QA0 STATIC
+  -> fresh QA1 STRUCTURAL
+  -> fresh QA2 RUNTIME
+  -> QA3 GAMEPLAY through approved READ_ONLY QA Agent + Unity MCP
+  -> one complete evidence batch
+  -> FAILED -> existing exact-route Fix -> checkpoint -> fresh QA0-QA3
+  -> owned input/tooling cleanup -> M2 squash -> COMPLETED on full PASS
+```
 
-UnityAI runs as its own local application. A selected Unity game is an external target identified by an absolute filesystem path. Target-specific state must not leak into global application definitions. The reusable Unity-side package is temporary tooling copied into a managed task worktree; it does not embed the orchestrator in a game.
+The approved M4 QA snapshot remains authoritative. The same provider-neutral QA Agent reasons about gameplay scenarios from existing acceptance criteria and test requirements; no gameplay-planner, image-only model, evidence summarizer, route recalculation, or escalation exists. Gameplay product failures use M7's Fix Agent and shared maximum of three automatic fixes for the task. Every fix invalidates prior evidence and starts at STATIC.
 
-### Web application
+Bridge 0.3.0 adds only explicit operations: active-scene reload; input capability/binding/action inspection; bounded virtual keyboard, mouse, and gamepad control; release-all; frame observation through `editor.status`; on-demand Game View capture; and one-value runtime probes. The Input System package is detected at runtime through a fixed compatibility component so the Editor-only bridge still compiles in projects without that optional package. The component creates and tracks only `UnityAI-*` virtual devices, queues state through supported Input System event APIs, and removes only its owned devices on release, Play Mode exit, or bridge disposal. Semantic actions resolve real keyboard/mouse/gamepad or simple composite binding paths before driving controls; they never invoke an InputAction callback or gameplay method.
 
-The React application presents project selection, task drafting, contract approval, blocked-task actions, implementation progress, Unity tooling, QA evidence/batches, gameplay-pending state, and completed commit details. It sends commands over ordinary HTTP and polls progress. M8 may extend it with player-level evidence without changing the local application boundary.
+Screenshots are captured on demand, bounded to 1280x720 and 2.5 MB, and written under non-versioned `Library/UnityAI/screenshots` before the Node client returns MCP image content. Runtime probes accept an exact object selector, component type, and allowlisted serialized primitive or Transform property. They cannot mutate state, recursively serialize graphs, invoke getters/methods, or access files. Temporary screenshot data and the marker-owned bridge are removed before finalization and are rejected if present in the product diff.
 
-### Local server
+`apps/unity-mcp` now maps 29 named tools to the same validated `UnityBridgeClient`. The added tools cover scene reload, input capability/binding queries, keyboard/mouse/gamepad controls, semantic action execution, release-all, frame waits, screenshots, and runtime probes. It still exposes no arbitrary C#, gameplay method, reflection, shell, filesystem, process, desktop-control, or generic RPC surface. The QA Agent remains `READ_ONLY`; input changes transient runtime state rather than project files.
 
-The server will coordinate application use cases, persistence, process execution, and external adapters. It remains a lightweight local Node.js service rather than a cloud or microservice system.
+`WindowsInputFallback` is a separate, optional server-side capability, never an MCP desktop-automation tool. It is disabled by default and can operate only on Windows after exact UnityAI-owned process/worktree validation, positive Game View window discovery, foreground focus, and a second PID check. Its fixed key/mouse primitives record `WINDOWS_SENDINPUT` evidence and release held controls. Unknown processes, projects, windows, or focus states fail closed.
 
-### Core domain
-
-Core types and rules now describe tasks, lifecycle state, Task Contracts, feasibility, approval, QA sessions/results/evidence/findings, and fix results. Domain code does not import a concrete AI provider, Unity bridge, web framework, filesystem, or Git implementation.
-
-### Agent, model, and provider boundary
-
-An agent definition owns role, instructions, permissions, tools, context rules, and expected output schema. Separately replaceable configuration defines provider/model/effort assignments for selected task strengths. M3 provider adapters translate explicit provider-neutral requests to Codex or Claude. M4 consumes routing records without placing model IDs in agent definitions; changing a provider model name does not change agent behavior.
-
-### Target project adapters
-
-The filesystem/native-Git adapter inspects external repositories and safely modifies only verified managed task worktrees. The Unity adapter and reusable Unity-side bridge expose bounded project structure, compilation evidence, Editor state, Play Mode control, console data, and read-only scene/object snapshots. M2 records one task as the write owner. M7 consumes these capabilities for non-input QA; M8 may add player-input and visual evidence without adding arbitrary bridge execution.
-
-### Persistence and configuration
-
-Task and AI execution persistence use plain JSON/log files under a local runtime-data location. Model routing and provider settings live in configuration rather than repeated conditionals. A database is not planned until demonstrated need justifies one.
+Gameplay tests use the existing normalized results and evidence kinds. `PASS` requires evidence; `FAIL` and `BLOCKED` remain completion blockers; infrastructure/input/screenshot/MCP failures remain technical and do not invoke Fix as code defects. Cancellation aborts the provider and best-effort releases input/exits Play Mode while preserving worktrees and artifacts. Restart recovery never turns orphaned `TESTING`/`FIXING` state into success.
 
 ## Dependency direction
 

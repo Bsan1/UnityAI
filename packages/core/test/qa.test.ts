@@ -4,6 +4,7 @@ import { test } from "node:test";
 import {
   approveTaskContract,
   beginTaskFix,
+  beginTaskGameplayQA,
   beginTaskImplementation,
   beginTaskQA,
   completeTaskFixAndRestartQA,
@@ -121,6 +122,12 @@ test("M7 state flow supports testing, batched failure, fixing, full restart, gam
     () => transitionTask(gameplay, "COMPLETED"),
     /cannot transition/u,
   );
+  const gameplayTesting = beginTaskGameplayQA(gameplay, {
+    sessionId: "QA-GAMEPLAY",
+    cycleNumber: 3,
+  });
+  assert.equal(gameplayTesting.state, "TESTING");
+  assert.ok(gameplayTesting.events.some((event) => event.type === "GAMEPLAY_QA_STARTED"));
 
   const separatelyTesting = beginTaskQA(readyForQA(), {
     sessionId: "QA-PASS",
@@ -138,7 +145,7 @@ test("M7 state flow supports testing, batched failure, fixing, full restart, gam
   );
 });
 
-test("QA structured output requires evidence-backed pass/fail and excludes gameplay execution", () => {
+test("QA structured output requires evidence-backed pass/fail across QA0-QA3", () => {
   const parsed = parseQAAgentOutput({
     summary: "All executable tests attempted.",
     results: [{
@@ -168,20 +175,21 @@ test("QA structured output requires evidence-backed pass/fail and excludes gamep
     }],
     findings: [],
   }), /requires evidence/u);
-  assert.throws(() => parseQAAgentOutput({
-    summary: "Gameplay claimed.",
+  const gameplay = parseQAAgentOutput({
+    summary: "Gameplay observed through real input evidence.",
     results: [{
       testId: "TEST-GAME",
       category: "GAMEPLAY",
       status: "PASS",
-      summary: "Claimed pass.",
-      expected: "Input.",
-      observed: "Input.",
-      evidence: [{ kind: "MCP", summary: "Unsupported." }],
+      summary: "Dash passed.",
+      expected: "Space performs a dash.",
+      observed: "Virtual Space input changed the player transform.",
+      evidence: [{ kind: "INPUT", summary: "Virtual keyboard Space traversed the real binding." }],
       likelyArea: [],
     }],
     findings: [],
-  }), /category is invalid/u);
+  });
+  assert.equal(gameplay.results[0]?.category, "GAMEPLAY");
 });
 
 test("QA session validation preserves gameplay as NOT_RUN with the M8 reason", () => {

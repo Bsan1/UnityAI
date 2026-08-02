@@ -156,14 +156,16 @@ const startFakeBridge = async (options: {
   readonly descriptorProject?: string;
   readonly protocolVersion?: number;
   readonly host?: string;
+  readonly playing?: boolean;
   readonly reply?: (request: Record<string, unknown>, socket: Socket) => void;
 } = {}): Promise<FakeBridge> => {
   const root = await createUnityProject();
   const token = options.token ?? "a".repeat(48);
   const requests: Array<Record<string, unknown>> = [];
+  let frameCount = 10;
   const server = createServer((socket) => {
     const chunks: Buffer[] = [];
-    socket.on("data", (chunk: Buffer) => {
+    socket.on("data", async (chunk: Buffer) => {
       chunks.push(chunk);
       const content = Buffer.concat(chunks);
       const newline = content.indexOf(0x0a);
@@ -185,18 +187,19 @@ const startFakeBridge = async (options: {
       const results: Record<string, unknown> = {
         "bridge.ping": {
           protocolVersion: 1,
-          bridgeVersion: "0.2.0",
+          bridgeVersion: "0.3.0",
           unityVersion: "6000.3.11f1",
           projectPath: root,
           processId: 1234,
         },
         "editor.status": {
-          isPlaying: false,
+          isPlaying: options.playing ?? false,
           isPaused: false,
           isCompiling: false,
           isUpdating: false,
           activeScene: "SampleScene",
           activePlatform: "StandaloneWindows64",
+          frameCount: options.playing === true ? ++frameCount : frameCount,
           lastCompilation: {
             requestId: "compile-1",
             requestedAt: new Date().toISOString(),
@@ -228,7 +231,67 @@ const startFakeBridge = async (options: {
           components: [],
           propertiesComplete: true,
         },
+        "play.reloadScene": { requested: true },
+        "input.capabilities": {
+          inputSystemAvailable: true,
+          legacyInputAvailable: false,
+          activeInputHandling: "NEW",
+          virtualDevicesSupported: ["KEYBOARD", "MOUSE", "GAMEPAD"],
+          qaOwnedDevices: [],
+          osFallback: "ORCHESTRATOR_ONLY",
+        },
+        "input.bindings": {
+          complete: true,
+          count: 1,
+          hasMore: false,
+          bindings: [{
+            actionMap: "Player",
+            action: "Dash",
+            enabled: true,
+            bindingName: "",
+            path: "<Keyboard>/space",
+            effectivePath: "<Keyboard>/space",
+            groups: "Keyboard",
+            isComposite: false,
+            isPartOfComposite: false,
+          }],
+        },
+        "input.resolveAction": {
+          action: "Dash",
+          actionMap: "Player",
+          mode: "BUTTON",
+          controls: [{ role: "button", path: "<Keyboard>/space" }],
+        },
+        "input.control": {
+          inputSource: "UNITY_INPUT_SYSTEM_VIRTUAL_DEVICE",
+          device: ((request.params as Record<string, unknown> | undefined)?.device ?? "KEYBOARD"),
+          control: ((request.params as Record<string, unknown> | undefined)?.control ?? "space"),
+          value: ((request.params as Record<string, unknown> | undefined)?.value ?? [1]),
+          frameCount,
+        },
+        "input.releaseAll": { releasedControls: 1, removedDevices: 1, frameCount },
+        "gameView.screenshot": {
+          evidenceId: "SHOT-FAKE",
+          relativePath: "Library/UnityAI/screenshots/SHOT-FAKE.png",
+          mimeType: "image/png",
+          width: 320,
+          height: 180,
+          byteCount: 3,
+          capturedAt: new Date().toISOString(),
+        },
+        "runtime.probe": {
+          hierarchyPath: "SampleScene:/Player",
+          componentType: "PlayerMover",
+          propertyPath: "isDashing",
+          valueType: "Boolean",
+          value: "true",
+          truncated: false,
+        },
       };
+      if (method === "gameView.screenshot") {
+        await mkdir(join(root, "Library", "UnityAI", "screenshots"), { recursive: true });
+        await writeFile(join(root, "Library", "UnityAI", "screenshots", "SHOT-FAKE.png"), "png", "utf8");
+      }
       const result = results[method];
       if (result === undefined) {
         socket.end(`${JSON.stringify({ id, ok: false, error: { code: "UNKNOWN_METHOD", message: "unknown" } })}\n`);
@@ -247,7 +310,7 @@ const startFakeBridge = async (options: {
   await mkdir(join(root, "Library", "UnityAI"), { recursive: true });
   await writeFile(descriptorPath, JSON.stringify({
     protocolVersion: options.protocolVersion ?? UNITY_BRIDGE_PROTOCOL_VERSION,
-    bridgeVersion: "0.2.0",
+    bridgeVersion: "0.3.0",
     projectRoot: options.descriptorProject ?? root,
     unityVersion: "6000.3.11f1",
     editorProcessId: 1234,
@@ -327,6 +390,89 @@ test("bridge client authenticates and maps the focused command set with bounded 
   }
 });
 
+test("M8 bridge client drives explicit virtual input, semantic bindings, frame timing, screenshots, and bounded probes", async () => {
+  const bridge = await startFakeBridge({ playing: true });
+  try {
+    const client = new UnityBridgeClient(bridge.root, { timeoutMs: 2_000 });
+    assert.equal((await client.inputCapabilities()).inputSystemAvailable, true);
+    assert.equal((await client.inputBindings({ action: "Dash" })).bindings[0]?.effectivePath, "<Keyboard>/space");
+    assert.equal((await client.reloadScene()).requested, true);
+    await client.setInputControl({ device: "KEYBOARD", control: "w", value: [1] });
+    await client.setInputControl({ device: "MOUSE", control: "delta", value: [4, -2] });
+    await client.setInputControl({ device: "MOUSE", control: "scroll", value: [0, 120] });
+    await client.setInputControl({ device: "GAMEPAD", control: "buttonSouth", value: [1] });
+    await client.setInputControl({ device: "GAMEPAD", control: "leftStick", value: [1, 0] });
+    const keyPress = await client.pressInputControl({ device: "KEYBOARD", control: "space", frames: 2 });
+    assert.equal(keyPress.frames, 2);
+    const semantic = await client.inputAction({ action: "Dash", actionMap: "Player", holdFrames: 1 });
+    assert.deepEqual(semantic.controls, ["<Keyboard>/space"]);
+    const released = await client.releaseAllInputs();
+    assert.equal(released.removedDevices, 1);
+    const screenshot = await client.gameViewScreenshot({ maxWidth: 640, maxHeight: 360 });
+    assert.equal(Buffer.from(screenshot.data, "base64").toString("utf8"), "png");
+    assert.equal(screenshot.width, 320);
+    const probe = await client.runtimeProbe({
+      hierarchyPath: "SampleScene:/Player",
+      componentType: "PlayerMover",
+      propertyPath: "isDashing",
+    });
+    assert.equal(probe.value, "true");
+    const methods = bridge.requests.map((request) => request.method);
+    assert.ok(methods.includes("input.resolveAction"));
+    assert.ok(methods.filter((method) => method === "input.control").length >= 9);
+    assert.equal(methods.some((method) => /execute|method|reflection|shell|file/u.test(String(method))), false);
+  } finally {
+    await closeBridge(bridge);
+  }
+});
+
+test("M8 bridge client rejects unsupported bindings and screenshot paths outside controlled Library evidence", async (t) => {
+  await t.test("unsupported binding", async () => {
+    const bridge = await startFakeBridge({
+      playing: true,
+      reply: (request, socket) => socket.end(`${JSON.stringify({
+        id: request.id,
+        ok: false,
+        error: { code: "INPUT_BINDING_UNSUPPORTED", message: "unsupported composite" },
+      })}\n`),
+    });
+    try {
+      await assert.rejects(
+        () => new UnityBridgeClient(bridge.root).resolveInputAction({ action: "Complex" }),
+        unityError("INPUT_BINDING_UNSUPPORTED"),
+      );
+    } finally {
+      await closeBridge(bridge);
+    }
+  });
+  await t.test("screenshot path escape", async () => {
+    const bridge = await startFakeBridge({
+      playing: true,
+      reply: (request, socket) => socket.end(`${JSON.stringify({
+        id: request.id,
+        ok: true,
+        result: {
+          evidenceId: "SHOT-BAD",
+          relativePath: "Assets/SHOT-BAD.png",
+          mimeType: "image/png",
+          width: 1,
+          height: 1,
+          byteCount: 1,
+          capturedAt: new Date().toISOString(),
+        },
+      })}\n`),
+    });
+    try {
+      await assert.rejects(
+        () => new UnityBridgeClient(bridge.root).gameViewScreenshot(),
+        unityError("SCREENSHOT_CAPTURE_FAILED"),
+      );
+    } finally {
+      await closeBridge(bridge);
+    }
+  });
+});
+
 test("bridge client normalizes authentication, unknown-command, timeout, cancellation, and oversized-response failures", async (t) => {
   await t.test("authentication", async () => {
     const bridge = await startFakeBridge({ descriptorToken: "b".repeat(48) });
@@ -400,11 +546,22 @@ test("Unity package source layout remains Editor-only and contains explicit boun
   const packageJson = JSON.parse(await readFile(join(packageRoot, "package.json"), "utf8")) as Record<string, unknown>;
   const assembly = JSON.parse(await readFile(join(packageRoot, "Editor", "UnityAI.EditorBridge.asmdef"), "utf8")) as Record<string, unknown>;
   const bridgeSource = await readFile(join(packageRoot, "Editor", "BridgeCommands.cs"), "utf8");
+  const inputSource = await readFile(join(packageRoot, "Editor", "InputQaController.cs"), "utf8");
+  const visualSource = await readFile(join(packageRoot, "Editor", "VisualEvidence.cs"), "utf8");
   const compilationSource = await readFile(join(packageRoot, "Editor", "CompilationTracker.cs"), "utf8");
   assert.equal(packageJson.name, "com.unityai.editor-bridge");
-  assert.equal(packageJson.version, "0.2.0");
+  assert.equal(packageJson.version, "0.3.0");
   assert.deepEqual(assembly.includePlatforms, ["Editor"]);
   assert.doesNotMatch(bridgeSource, /execute_csharp|Process\.Start|File\.Write|MenuItem/u);
+  assert.match(inputSource, /QueueStateEvent/u);
+  assert.match(inputSource, /QueueDeltaStateEvent/u);
+  assert.match(inputSource, /KeyboardState/u);
+  assert.match(inputSource, /AddDevice/u);
+  assert.match(inputSource, /RemoveDevice/u);
+  assert.doesNotMatch(inputSource, /InvokeMember|GetMethod\(parameters|GetField\(parameters|SendMessage/u);
+  assert.doesNotMatch(inputSource, /parameters\.(?:componentType|propertyPath).*SetValue/su);
+  assert.match(visualSource, /Library.*UnityAI.*screenshots/u);
+  assert.doesNotMatch(visualSource, /Assets/u);
   assert.match(compilationSource, /CompilationPipeline\.assemblyCompilationFinished/u);
   assert.match(compilationSource, /CompilationPipeline\.compilationFinished/u);
   assert.doesNotMatch(compilationSource, /System\.Diagnostics|Process\.Start/u);
@@ -418,6 +575,14 @@ test("Unity package source layout remains Editor-only and contains explicit boun
     "scene.summary",
     "scene.hierarchy",
     "object.snapshot",
+    "play.reloadScene",
+    "input.capabilities",
+    "input.bindings",
+    "input.resolveAction",
+    "input.control",
+    "input.releaseAll",
+    "gameView.screenshot",
+    "runtime.probe",
   ]) {
     assert.match(bridgeSource, new RegExp(method.replace(".", "\\."), "u"));
   }

@@ -104,6 +104,8 @@ export const api = {
   getTaskQA: async (id: string) =>
     (await request<{ qa: TaskQAArtifacts }>(`/tasks/${id}/qa`)).qa,
   startQA: (id: string) => request(`/tasks/${id}/qa/start`, json("POST")),
+  startGameplayQA: (id: string) => request(`/tasks/${id}/gameplay-qa/start`, json("POST")),
+  cancelGameplayQA: (id: string) => request(`/tasks/${id}/gameplay-qa/cancel`, json("POST")),
   fixAndRetest: (id: string) =>
     request(`/tasks/${id}/qa/fix-and-retest`, json("POST")),
   cancelQA: (id: string) => request(`/tasks/${id}/qa/cancel`, json("POST")),
@@ -142,6 +144,15 @@ export const userMessageForError = (error: unknown): string => {
   }
   if (error.code === "UNITY_TOOLING_IN_FINAL_DIFF") {
     return "Temporary UnityAI bridge tooling remains in the task diff, so finalization was stopped safely.";
+  }
+  if (error.code === "INPUT_BINDING_UNSUPPORTED") {
+    return "The required gameplay binding could not be mapped safely to a virtual keyboard, mouse, or gamepad control. The test remains blocked rather than being treated as passed.";
+  }
+  if (error.code === "OS_INPUT_FOCUS_UNSAFE") {
+    return "UnityAI could not positively verify the owned Unity Game View and foreground focus, so it refused to send operating-system input.";
+  }
+  if (error.code === "SCREENSHOT_CAPTURE_FAILED") {
+    return "Game View evidence could not be captured safely. The gameplay QA run stopped as a technical failure and preserved the task worktree.";
   }
   if (error.code === "NOT_A_UNITY_PROJECT") {
     return "The selected Git project does not have the required Unity project structure (Assets, Packages, ProjectSettings, and ProjectVersion.txt).";

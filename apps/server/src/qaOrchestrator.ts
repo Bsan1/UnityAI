@@ -1,8 +1,9 @@
-import { access } from "node:fs/promises";
+import { access, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 
 import {
   beginTaskFix,
+  beginTaskGameplayQA,
   beginTaskQA,
   completeTaskFixAndRestartQA,
   completeTaskQAAndFinalize,
@@ -70,6 +71,29 @@ export const UNITY_QA_MCP_TOOLS = [
   "unity_object_snapshot",
 ] as const;
 
+export const UNITY_GAMEPLAY_QA_MCP_TOOLS = [
+  ...UNITY_QA_MCP_TOOLS,
+  "unity_reload_play_scene",
+  "unity_input_capabilities",
+  "unity_input_bindings",
+  "unity_key_press",
+  "unity_key_down",
+  "unity_key_up",
+  "unity_mouse_move",
+  "unity_mouse_click",
+  "unity_mouse_button_down",
+  "unity_mouse_button_up",
+  "unity_mouse_scroll",
+  "unity_gamepad_button",
+  "unity_gamepad_stick",
+  "unity_gamepad_trigger",
+  "unity_input_action",
+  "unity_release_all_inputs",
+  "unity_wait_frames",
+  "unity_game_view_screenshot",
+  "unity_runtime_probe",
+] as const;
+
 const unityToolingPrefix = "Packages/com.unityai.editor-bridge";
 const baselineCompilationId = "QA0-COMPILATION";
 const baselineGitDiffId = "QA0-GIT-DIFF";
@@ -122,6 +146,8 @@ interface CycleResult {
   readonly session: QASession;
   readonly report: QAReport;
 }
+
+type QAExecutionScope = "M7" | "FULL";
 
 const now = (): string => new Date().toISOString();
 
@@ -315,12 +341,13 @@ const pathExists = async (path: string): Promise<boolean> => {
 export const createUnityQAMcpConfiguration = (
   projectWorktreePath: string,
   unityMcpEntrypoint: string,
+  gameplay = false,
 ): McpStdioServerConfiguration => ({
   id: "unity",
   transport: "stdio",
   command: process.execPath,
   arguments: [resolve(unityMcpEntrypoint), "--projectPath", resolve(projectWorktreePath)],
-  allowedTools: UNITY_QA_MCP_TOOLS,
+  allowedTools: gameplay ? UNITY_GAMEPLAY_QA_MCP_TOOLS : UNITY_QA_MCP_TOOLS,
   startupTimeoutMs: 30_000,
   toolTimeoutMs: 60_000,
 });
@@ -373,7 +400,28 @@ export class QAOrchestrator {
     const allocation = await this.artifacts.nextCycle(task.id);
     await this.artifacts.clearFailure(task.id);
     await this.tasks.saveTask(beginTaskQA(task, allocation));
-    this.launch(task.id, (signal) => this.executeCycles(task.id, allocation, signal, 0));
+    const existing = await this.artifacts.get(task.id);
+    const automaticFixes = existing.fixes.filter((fix) => fix.automatic).length;
+    this.launch(task.id, (signal) => this.executeCycles(task.id, allocation, signal, automaticFixes, "M7"));
+    return { taskId: task.id, status: "STARTED" };
+  }
+
+  async startGameplay(id: string): Promise<QAStartResult> {
+    const task = await this.tasks.get(id);
+    this.assertIdle(task.id);
+    this.validateReadyTask(task, "READY_FOR_GAMEPLAY_QA");
+    const allocation = await this.artifacts.nextCycle(task.id);
+    const existing = await this.artifacts.get(task.id);
+    const automaticFixes = existing.fixes.filter((fix) => fix.automatic).length;
+    await this.artifacts.clearFailure(task.id);
+    await this.tasks.saveTask(beginTaskGameplayQA(task, allocation));
+    this.launch(task.id, (signal) => this.executeCycles(
+      task.id,
+      allocation,
+      signal,
+      automaticFixes,
+      "FULL",
+    ));
     return { taskId: task.id, status: "STARTED" };
   }
 
@@ -396,9 +444,13 @@ export class QAOrchestrator {
       );
     }
     await this.artifacts.clearFailure(task.id);
+    const scope: QAExecutionScope = task.events.some((entry) => entry.type === "GAMEPLAY_QA_STARTED")
+      ? "FULL"
+      : "M7";
+    const automaticFixes = qa.fixes.filter((fix) => fix.automatic).length;
     this.launch(task.id, async (signal) => {
       const allocation = await this.runFix(task.id, qa.latestReport as QAReport, false, signal);
-      await this.executeCycles(task.id, allocation, signal, 0);
+      await this.executeCycles(task.id, allocation, signal, automaticFixes, scope);
     });
     return { taskId: task.id, status: "STARTED" };
   }
@@ -489,11 +541,14 @@ export class QAOrchestrator {
     }
   }
 
-  private validateReadyTask(task: Task): void {
-    if (task.state !== "READY_FOR_QA") {
+  private validateReadyTask(
+    task: Task,
+    state: "READY_FOR_QA" | "READY_FOR_GAMEPLAY_QA" = "READY_FOR_QA",
+  ): void {
+    if (task.state !== state) {
       throw new ServerError(
         "INVALID_TRANSITION",
-        `Task ${task.id} must be READY_FOR_QA before QA can start.`,
+        `Task ${task.id} must be ${state} before this QA run can start.`,
         409,
       );
     }
@@ -521,11 +576,12 @@ export class QAOrchestrator {
     firstAllocation: CycleAllocation,
     signal: AbortSignal,
     initialAutomaticFixes: number,
+    scope: QAExecutionScope,
   ): Promise<void> {
     let allocation = firstAllocation;
     let automaticFixes = initialAutomaticFixes;
     for (;;) {
-      const cycle = await this.runCycle(taskId, allocation, signal);
+      const cycle = await this.runCycle(taskId, allocation, signal, scope);
       if (cycle.session.status === "TECHNICAL_FAILURE") {
         await this.artifacts.saveFailure(taskId, cycle.session.technicalFailure as QATechnicalFailure);
         await this.failCurrentTask(taskId, cycle.session.technicalFailure as QATechnicalFailure, cycle.session.sessionId);
@@ -541,6 +597,12 @@ export class QAOrchestrator {
         return;
       }
       if (cycle.session.status === "PASS") {
+        if (scope === "FULL") {
+          await this.progress(taskId, "GAMEPLAY_QA_PASSED", {
+            sessionId: cycle.session.sessionId,
+            scope: "QA0_QA1_QA2_QA3",
+          });
+        }
         await this.finalizeSuccessfulTask(taskId, cycle, signal);
         return;
       }
@@ -568,6 +630,7 @@ export class QAOrchestrator {
     taskId: TaskId,
     allocation: CycleAllocation,
     signal: AbortSignal,
+    scope: QAExecutionScope,
   ): Promise<CycleResult> {
     const task = await this.tasks.get(taskId);
     const plannedTests = buildPlan(task);
@@ -577,6 +640,7 @@ export class QAOrchestrator {
     const startedAt = now();
     let unitySummary: QASession["unityEnvironment"];
     let qaAgentRunId: string | undefined;
+    let connectedClient: UnityBridgeClient | undefined;
     await this.artifacts.saveSession(taskId, {
       schemaVersion: 1,
       sessionId: allocation.sessionId,
@@ -677,6 +741,7 @@ export class QAOrchestrator {
       }
       await this.unity.waitForIdle(taskId, {}, signal);
       const client = await this.unity.clientForTask(taskId);
+      connectedClient = client;
       unitySummary = {
         projectWorktreePath: prepared.projectWorktreePath,
         unityVersion: prepared.unityVersion,
@@ -820,7 +885,7 @@ export class QAOrchestrator {
         }
       }
 
-      const gameplayResults: QATestResult[] = plannedTests
+      const gameplayResults: QATestResult[] = scope === "M7" ? plannedTests
         .filter((test) => test.category === "GAMEPLAY")
         .map((test) => ({
           testId: test.id,
@@ -832,14 +897,16 @@ export class QAOrchestrator {
           evidence: [],
           likelyArea: [],
           blockingReason: "REQUIRES_M8_GAMEPLAY_QA",
-        }));
+        })) : [];
 
       const compileBlockedRuntime: QATestResult[] = compilationHasErrors
-        ? runtimeTests.map((test) => ({
+        ? plannedTests.filter((test) =>
+            test.category === "RUNTIME" || (scope === "FULL" && test.category === "GAMEPLAY"),
+          ).map((test) => ({
             testId: test.id,
-            category: "RUNTIME",
-            status: "BLOCKED",
-            summary: "Runtime test was blocked because Unity compilation failed.",
+            category: test.category,
+            status: "BLOCKED" as const,
+            summary: `${test.category === "GAMEPLAY" ? "Gameplay" : "Runtime"} test was blocked because Unity compilation failed.`,
             expected: test.description,
             observed: "Play Mode was not entered after compilation failure.",
             evidence: [compilationEvidence],
@@ -850,12 +917,12 @@ export class QAOrchestrator {
 
       const testsForAgent = plannedTests.filter((test) =>
         test.source === "CONTRACT" &&
-        test.category !== "GAMEPLAY" &&
-        !(test.category === "RUNTIME" && compilationHasErrors),
+        (scope === "FULL" || test.category !== "GAMEPLAY") &&
+        !((test.category === "RUNTIME" || test.category === "GAMEPLAY") && compilationHasErrors),
       );
       if (testsForAgent.length > 0) {
         for (const test of testsForAgent) {
-          await this.progress(taskId, "QA_TEST_STARTED", {
+          await this.progress(taskId, test.category === "GAMEPLAY" ? "GAMEPLAY_TEST_STARTED" : "QA_TEST_STARTED", {
             sessionId: allocation.sessionId,
             testId: test.id,
             category: test.category,
@@ -866,7 +933,23 @@ export class QAOrchestrator {
         const mcp = createUnityQAMcpConfiguration(
           gitEnvironment.taskWorktreePath,
           this.unityMcpEntrypoint,
+          scope === "FULL",
         );
+        const gameplayPreflight = scope === "FULL"
+          ? {
+              inputCapabilities: await client.inputCapabilities(signal),
+              bindings: await client.inputBindings({ maxBindings: 300 }, signal),
+            }
+          : undefined;
+        if (gameplayPreflight !== undefined) {
+          collector.add({
+            kind: "INPUT",
+            summary: gameplayPreflight.inputCapabilities.inputSystemAvailable
+              ? "Unity Input System virtual-device gameplay controls are available."
+              : "Unity Input System virtual-device gameplay controls are unavailable.",
+            details: jsonDetails(gameplayPreflight),
+          });
+        }
         let execution: AIExecutionResult;
         try {
           execution = await this.ai.executePlanned(
@@ -905,16 +988,22 @@ export class QAOrchestrator {
                   runtimeEvidence,
                   runtimeBlockedByCompilation: compilationHasErrors,
                   consoleCaptureComplete: consoleAfterCompilation.complete,
+                  ...(gameplayPreflight === undefined ? {} : { gameplayPreflight }),
                 },
               }),
               context:
-                "Complete every supplied M7-supported test before returning one batch. Use only read-only repository access and the explicit Unity MCP tools. Never modify files, never fix code, and never claim GAMEPLAY tests passed.",
+                scope === "FULL"
+                  ? "Complete every supplied QA0-QA3 test before returning one batch. For GAMEPLAY tests, inspect real bindings, drive UnityAI-owned virtual devices through the explicit MCP tools, wait in Unity frames, observe runtime evidence, and release all inputs. Never invoke gameplay methods or callbacks, modify files, fix code, or claim PASS without evidence."
+                  : "Complete every supplied M7-supported test before returning one batch. Use only read-only repository access and the explicit Unity MCP tools. Never modify files, never fix code, and never claim GAMEPLAY tests passed.",
             },
             qaPlan,
             signal,
             { mcpServers: [mcp] },
           );
         } finally {
+          if (scope === "FULL") {
+            await this.releaseAllInputsBestEffort(client);
+          }
           await this.exitPlayMode(client, signal).catch(() => undefined);
         }
         requireSuccessfulExecution(execution, "AGENT");
@@ -950,7 +1039,7 @@ export class QAOrchestrator {
             ...agentResult,
             evidence,
           });
-          await this.progress(taskId, "QA_TEST_COMPLETED", {
+          await this.progress(taskId, agentResult.category === "GAMEPLAY" ? "GAMEPLAY_TEST_COMPLETED" : "QA_TEST_COMPLETED", {
             sessionId: allocation.sessionId,
             testId: agentResult.testId,
             status: agentResult.status,
@@ -1003,7 +1092,7 @@ export class QAOrchestrator {
             observed: failed.observed,
             evidence: failed.evidence,
             suspectedArea: failed.likelyArea,
-            source: failed.category === "GAMEPLAY" ? "RUNTIME" : failed.category,
+            source: failed.category,
           });
         }
       }
@@ -1014,7 +1103,10 @@ export class QAOrchestrator {
       const gameplayPending = orderedResults.some((result) =>
         result.category === "GAMEPLAY" && result.status === "NOT_RUN",
       );
-      const status: QASession["status"] = hasM7Failure
+      const hasGameplayFailure = scope === "FULL" && orderedResults.some((result) =>
+        result.category === "GAMEPLAY" && result.status !== "PASS",
+      );
+      const status: QASession["status"] = hasM7Failure || hasGameplayFailure
         ? "FAIL"
         : gameplayPending
           ? "INCOMPLETE_GAMEPLAY"
@@ -1023,7 +1115,9 @@ export class QAOrchestrator {
       const summary = summarize(
         orderedResults,
         status === "PASS"
-          ? "All required M7 QA tests passed."
+          ? scope === "FULL"
+            ? "All required static, structural, runtime, and gameplay QA tests passed."
+            : "All required M7 QA tests passed."
           : status === "INCOMPLETE_GAMEPLAY"
             ? "Static, structural, and runtime QA passed; required gameplay tests remain for M8."
             : "The complete available QA session found one or more failures or blockers.",
@@ -1050,8 +1144,22 @@ export class QAOrchestrator {
         this.artifacts.saveSession(taskId, session),
         this.artifacts.saveReport(taskId, report),
       ]);
+      if (scope === "FULL") {
+        const current = await this.tasks.get(taskId);
+        if (current.state === "TESTING") {
+          await this.tasks.saveTask(recordTaskQAProgress(current, "GAMEPLAY_QA_CYCLE_COMPLETED", {
+            sessionId: allocation.sessionId,
+            scope: "GAMEPLAY_CYCLE",
+            outcome: status,
+          }));
+        }
+      }
       return { session, report };
     } catch (error: unknown) {
+      if (connectedClient !== undefined && scope === "FULL") {
+        await this.releaseAllInputsBestEffort(connectedClient);
+        await this.exitPlayMode(connectedClient, new AbortController().signal).catch(() => undefined);
+      }
       const failure = technicalFailure(error, "PREFLIGHT");
       const completedAt = now();
       const session = parseQASession({
@@ -1226,7 +1334,7 @@ export class QAOrchestrator {
     try {
       const task = await this.tasks.get(taskId);
       if (task.state !== "TESTING" || cycle.session.summary.gameplayPending > 0) {
-        throw new QARunError("FINALIZATION", "FINALIZATION_NOT_ALLOWED", "Task is not eligible for M7 finalization.");
+        throw new QARunError("FINALIZATION", "FINALIZATION_NOT_ALLOWED", "Task is not eligible for full QA finalization.");
       }
       const { environment } = await this.git.getEnvironmentWithStatus(taskId);
       if (environment === undefined || environment.status !== "ACTIVE") {
@@ -1241,6 +1349,7 @@ export class QAOrchestrator {
       if (afterRemoval.bridge !== "NOT_INSTALLED") {
         throw new QARunError("FINALIZATION", "UNITY_BRIDGE_OWNERSHIP_MISMATCH", "Temporary UnityAI bridge tooling could not be removed.");
       }
+      await this.removeGameplayTemporaryArtifacts(environment.taskWorktreePath);
       const bridgePath = join(environment.taskWorktreePath, ...unityToolingPrefix.split("/"));
       if (await pathExists(bridgePath)) {
         throw new QARunError("FINALIZATION", "UNITY_BRIDGE_OWNERSHIP_MISMATCH", "Temporary UnityAI bridge files remain in the managed worktree.");
@@ -1293,6 +1402,7 @@ export class QAOrchestrator {
     const status = await this.unity.status(taskId);
     if (status.bridge === "CONNECTED") {
       const client = await this.unity.clientForTask(taskId);
+      await this.releaseAllInputsBestEffort(client);
       await this.exitPlayMode(client, signal);
     }
     const refreshed = await this.unity.status(taskId);
@@ -1337,6 +1447,28 @@ export class QAOrchestrator {
         "Temporary UnityAI bridge tooling could not be excluded from the fix checkpoint.",
       );
     }
+    await this.removeGameplayTemporaryArtifacts(worktreePath);
+  }
+
+  private async removeGameplayTemporaryArtifacts(worktreePath: string): Promise<void> {
+    const screenshots = join(worktreePath, "Library", "UnityAI", "screenshots");
+    await rm(screenshots, { recursive: true, force: true });
+    if (await pathExists(screenshots)) {
+      throw new QARunError(
+        "FINALIZATION",
+        "UNITY_TOOLING_IN_FINAL_DIFF",
+        "Temporary UnityAI screenshot evidence could not be removed.",
+      );
+    }
+  }
+
+  private async releaseAllInputsBestEffort(client: UnityBridgeClient): Promise<void> {
+    const candidate = client as UnityBridgeClient & {
+      readonly releaseAllInputs?: () => Promise<unknown>;
+    };
+    if (typeof candidate.releaseAllInputs === "function") {
+      await candidate.releaseAllInputs().catch(() => undefined);
+    }
   }
 
   private async exitPlayMode(client: UnityBridgeClient, signal: AbortSignal): Promise<void> {
@@ -1353,6 +1485,20 @@ export class QAOrchestrator {
     expected: boolean,
     signal: AbortSignal,
   ): Promise<UnityEditorStatus> {
+    const candidate = client as UnityBridgeClient & {
+      readonly waitForPlayModeState?: (
+        expectedState: boolean,
+        input: { readonly timeoutMs: number; readonly stableForMs: number },
+        waitSignal?: AbortSignal,
+      ) => Promise<UnityEditorStatus>;
+    };
+    if (typeof candidate.waitForPlayModeState === "function") {
+      return candidate.waitForPlayModeState(
+        expected,
+        { timeoutMs: this.playModeTimeoutMs, stableForMs: 1_000 },
+        signal,
+      );
+    }
     const deadline = Date.now() + this.playModeTimeoutMs;
     while (Date.now() < deadline) {
       if (signal.aborted) {
@@ -1447,7 +1593,15 @@ export class QAOrchestrator {
 
   private async progress(
     taskId: TaskId,
-    type: "QA_TEST_STARTED" | "QA_TEST_COMPLETED",
+    type:
+      | "QA_TEST_STARTED"
+      | "QA_TEST_COMPLETED"
+      | "GAMEPLAY_TEST_STARTED"
+      | "GAMEPLAY_TEST_COMPLETED"
+      | "INPUT_SENT"
+      | "SCREENSHOT_CAPTURED"
+      | "GAMEPLAY_QA_CYCLE_COMPLETED"
+      | "GAMEPLAY_QA_PASSED",
     metadata: Readonly<Record<string, string>>,
   ): Promise<void> {
     const task = await this.tasks.get(taskId);
@@ -1485,6 +1639,7 @@ export class QAOrchestrator {
       const status: UnityTaskEnvironmentStatus = await this.unity.status(taskId);
       if (status.bridge === "CONNECTED") {
         const client = await this.unity.clientForTask(taskId);
+        await this.releaseAllInputsBestEffort(client);
         await this.exitPlayMode(client, new AbortController().signal).catch(() => undefined);
       }
     } catch {

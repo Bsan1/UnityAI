@@ -1,5 +1,5 @@
 export const UNITY_BRIDGE_PROTOCOL_VERSION = 1 as const;
-export const UNITY_BRIDGE_VERSION = "0.2.0" as const;
+export const UNITY_BRIDGE_VERSION = "0.3.0" as const;
 export const UNITY_BRIDGE_PACKAGE_NAME = "com.unityai.editor-bridge" as const;
 
 export interface UnityPackageDependency {
@@ -68,7 +68,101 @@ export interface UnityEditorStatus {
   readonly isUpdating: boolean;
   readonly activeScene: string;
   readonly activePlatform: string;
+  readonly frameCount?: number;
   readonly lastCompilation?: UnityCompilationResult;
+}
+
+export type UnityVirtualInputDevice = "KEYBOARD" | "MOUSE" | "GAMEPAD";
+
+export interface UnityInputCapabilities {
+  readonly inputSystemAvailable: boolean;
+  readonly legacyInputAvailable: boolean;
+  readonly activeInputHandling: UnityInputHandling;
+  readonly virtualDevicesSupported: readonly UnityVirtualInputDevice[];
+  readonly qaOwnedDevices: readonly {
+    readonly device: UnityVirtualInputDevice;
+    readonly name: string;
+    readonly deviceId: number;
+  }[];
+  readonly osFallback: "ORCHESTRATOR_ONLY";
+}
+
+export interface UnityInputBinding {
+  readonly actionMap: string;
+  readonly action: string;
+  readonly enabled: boolean;
+  readonly bindingName: string;
+  readonly path: string;
+  readonly effectivePath: string;
+  readonly groups: string;
+  readonly isComposite: boolean;
+  readonly isPartOfComposite: boolean;
+}
+
+export interface UnityInputBindings {
+  readonly complete: boolean;
+  readonly count: number;
+  readonly hasMore: boolean;
+  readonly bindings: readonly UnityInputBinding[];
+}
+
+export interface UnityInputActionResolution {
+  readonly action: string;
+  readonly actionMap: string;
+  readonly mode: "BUTTON" | "AXIS_1D" | "VECTOR_2D";
+  readonly controls: readonly {
+    readonly role: string;
+    readonly path: string;
+  }[];
+}
+
+export interface UnityInputCommandResult {
+  readonly inputSource: "UNITY_INPUT_SYSTEM_VIRTUAL_DEVICE";
+  readonly device: UnityVirtualInputDevice;
+  readonly control: string;
+  readonly value: readonly number[];
+  readonly frameCount: number;
+}
+
+export interface UnityReleaseInputsResult {
+  readonly releasedControls: number;
+  readonly removedDevices: number;
+  readonly frameCount: number;
+}
+
+export interface UnityGameViewScreenshotMetadata {
+  readonly evidenceId: string;
+  readonly relativePath: string;
+  readonly mimeType: "image/png";
+  readonly width: number;
+  readonly height: number;
+  readonly byteCount: number;
+  readonly capturedAt: string;
+}
+
+export interface UnityGameViewScreenshot extends UnityGameViewScreenshotMetadata {
+  readonly data: string;
+}
+
+export type UnityRuntimeProbeValueType =
+  | "Boolean"
+  | "Integer"
+  | "Float"
+  | "String"
+  | "Enum"
+  | "Vector2"
+  | "Vector3"
+  | "Quaternion"
+  | "Color"
+  | "ObjectReference";
+
+export interface UnityRuntimeProbeResult {
+  readonly hierarchyPath: string;
+  readonly componentType: string;
+  readonly propertyPath: string;
+  readonly valueType: UnityRuntimeProbeValueType;
+  readonly value: string;
+  readonly truncated: boolean;
 }
 
 export interface UnityCompilationMessage {
@@ -171,6 +265,14 @@ export const UNITY_BRIDGE_METHODS = [
   "scene.summary",
   "scene.hierarchy",
   "object.snapshot",
+  "play.reloadScene",
+  "input.capabilities",
+  "input.bindings",
+  "input.resolveAction",
+  "input.control",
+  "input.releaseAll",
+  "gameView.screenshot",
+  "runtime.probe",
 ] as const;
 
 export type UnityBridgeMethod = (typeof UNITY_BRIDGE_METHODS)[number];
@@ -184,6 +286,16 @@ export interface UnityBridgeParams {
   readonly instanceId?: number;
   readonly hierarchyPath?: string;
   readonly maxProperties?: number;
+  readonly action?: string;
+  readonly actionMap?: string;
+  readonly device?: UnityVirtualInputDevice;
+  readonly control?: string;
+  readonly value?: readonly number[];
+  readonly maxBindings?: number;
+  readonly maxWidth?: number;
+  readonly maxHeight?: number;
+  readonly componentType?: string;
+  readonly propertyPath?: string;
 }
 
 export interface UnityBridgeResponse<T> {

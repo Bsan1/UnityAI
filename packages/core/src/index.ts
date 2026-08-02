@@ -82,6 +82,7 @@ export {
 export { TaskDomainError } from "./errors.js";
 export {
   beginTaskFix,
+  beginTaskGameplayQA,
   beginTaskQA,
   completeTaskFixAndRestartQA,
   completeTaskQAAndFinalize,

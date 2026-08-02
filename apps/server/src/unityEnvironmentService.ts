@@ -619,6 +619,7 @@ export class UnityEnvironmentService {
         if (
           error instanceof UnityIntegrationError &&
           error.code !== "UNITY_BRIDGE_NOT_CONNECTED" &&
+          error.code !== "UNITY_BRIDGE_TIMEOUT" &&
           error.code !== "UNITY_PROJECT_METADATA_INVALID"
         ) {
           throw error;

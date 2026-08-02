@@ -6,6 +6,7 @@ export const QA_EXECUTABLE_CATEGORIES = [
   "STATIC",
   "STRUCTURAL",
   "RUNTIME",
+  "GAMEPLAY",
 ] as const;
 
 export type QAExecutableCategory = (typeof QA_EXECUTABLE_CATEGORIES)[number];
@@ -32,6 +33,9 @@ export const QA_EVIDENCE_KINDS = [
   "OBJECT",
   "EDITOR_STATE",
   "PLAY_MODE",
+  "INPUT",
+  "SCREENSHOT",
+  "PROBE",
   "MCP",
   "REVIEW",
 ] as const;
@@ -44,6 +48,7 @@ export const QA_FINDING_SOURCES = [
   "STATIC",
   "STRUCTURAL",
   "RUNTIME",
+  "GAMEPLAY",
   "REVIEW",
 ] as const;
 export type QAFindingSource = (typeof QA_FINDING_SOURCES)[number];
@@ -131,6 +136,7 @@ export const QA_TECHNICAL_PHASES = [
   "STATIC",
   "STRUCTURAL",
   "RUNTIME",
+  "GAMEPLAY",
   "AGENT",
   "MCP",
   "FIX",

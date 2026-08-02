@@ -52,6 +52,26 @@ export const beginTaskQA = (
   ]);
 };
 
+export const beginTaskGameplayQA = (
+  taskValue: Task,
+  input: { readonly sessionId: string; readonly cycleNumber: number },
+  at = timestamp(),
+): Task => {
+  const task = parseTask(taskValue);
+  requireState(task, "READY_FOR_GAMEPLAY_QA");
+  return changeState(task, "TESTING", at, [
+    event("GAMEPLAY_QA_STARTED", at, {
+      sessionId: input.sessionId,
+      cycleNumber: String(input.cycleNumber),
+    }),
+    event("QA_RESTARTED", at, {
+      sessionId: input.sessionId,
+      cycleNumber: String(input.cycleNumber),
+      scope: "QA0_QA1_QA2_QA3",
+    }),
+  ]);
+};
+
 export const recordTaskQAFailure = (
   taskValue: Task,
   input: {
@@ -142,7 +162,15 @@ export const failTaskFix = (
 
 export const recordTaskQAProgress = (
   taskValue: Task,
-  type: "QA_TEST_STARTED" | "QA_TEST_COMPLETED",
+  type:
+    | "QA_TEST_STARTED"
+    | "QA_TEST_COMPLETED"
+    | "GAMEPLAY_TEST_STARTED"
+    | "GAMEPLAY_TEST_COMPLETED"
+    | "INPUT_SENT"
+    | "SCREENSHOT_CAPTURED"
+    | "GAMEPLAY_QA_CYCLE_COMPLETED"
+    | "GAMEPLAY_QA_PASSED",
   metadata: Readonly<Record<string, string>>,
   at = timestamp(),
 ): Task => {

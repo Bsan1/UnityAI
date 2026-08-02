@@ -441,6 +441,69 @@ test("owned Editor lifecycle connects by matching PID/project, waits idle, stops
   );
 });
 
+test("Editor startup tolerates a transient bridge request timeout during initial Unity import", async () => {
+  const harness = await createServiceHarness();
+  await harness.service.prepare(harness.context.task.id);
+  const launcher = new FakeLauncher(5252);
+  const manager = new UnityEditorProcessManager(launcher);
+  let launchedPingCalls = 0;
+  const service = new UnityEnvironmentService(
+    {
+      tasks: harness.context.taskService,
+      git: harness.context.gitService,
+      projects: harness.projects,
+      store: harness.store,
+      runtimeRoot: harness.context.runtimeRoot,
+      bridgeSourcePackagePath: bridgeSource,
+    },
+    {
+      resolver: new UnityEditorResolver({ platform: "win32", searchRoots: [] }),
+      processManager: manager,
+      processIsAlive: () => false,
+      editorStartTimeoutMs: 2_000,
+      clientFactory: () => ({
+        descriptorPath: join(
+          harness.ping.projectPath,
+          "Library",
+          "UnityAI",
+          "bridge-session.json",
+        ),
+        descriptor: async () => harness.descriptor,
+        ping: async () => {
+          if (launcher.calls.length === 0) {
+            throw new UnityIntegrationError(
+              "UNITY_BRIDGE_NOT_CONNECTED",
+              "Editor has not started.",
+            );
+          }
+          launchedPingCalls += 1;
+          if (launchedPingCalls === 1) {
+            throw new UnityIntegrationError(
+              "UNITY_BRIDGE_TIMEOUT",
+              "Unity main thread is busy importing packages.",
+            );
+          }
+          return harness.ping;
+        },
+        editorStatus: async () => ({
+          isPlaying: false,
+          isPaused: false,
+          isCompiling: false,
+          isUpdating: false,
+          activeScene: "SampleScene",
+          activePlatform: "StandaloneWindows64",
+        }),
+      }) as unknown as UnityBridgeClient,
+    },
+  );
+
+  const started = await service.startEditor(harness.context.task.id);
+  assert.equal(started.bridge, "CONNECTED");
+  assert.equal(started.ownedEditor, true);
+  assert.ok(launchedPingCalls >= 2);
+  await service.stopEditor(harness.context.task.id);
+});
+
 test("restart-like service instance revalidates bridge but refuses to kill an Editor it does not own", async () => {
   const harness = await createServiceHarness();
   await harness.service.prepare(harness.context.task.id);

@@ -45,6 +45,8 @@ const progressSteps = (
   const gitPrepared = hasEvent(task.events, "GIT_ENVIRONMENT_PREPARED");
   const interpretationComplete = task.analysis !== undefined || hasEvent(task.events, "ANALYSIS_COMPLETED");
   const feasibilityComplete = task.feasibility !== undefined;
+  const gameplayStarted = hasEvent(task.events, "GAMEPLAY_QA_STARTED");
+  const gameplayPassed = hasEvent(task.events, "GAMEPLAY_QA_PASSED");
   const contractApproved = task.taskContract?.approved === true;
   const implementationStatus: ProgressStepStatus = implementationComplete
     ? "COMPLETE"
@@ -124,6 +126,10 @@ const progressSteps = (
       "Player Gameplay QA",
       task.state === "READY_FOR_GAMEPLAY_QA"
         ? "CURRENT"
+        : task.state === "TESTING" && gameplayStarted
+          ? "CURRENT"
+          : gameplayPassed || task.state === "COMPLETED" && gameplayStarted
+            ? "COMPLETE"
         : task.state === "COMPLETED"
           ? "SKIPPED"
           : "PENDING",

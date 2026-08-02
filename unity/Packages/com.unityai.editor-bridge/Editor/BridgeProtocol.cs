@@ -8,7 +8,7 @@ namespace UnityAI.EditorBridge
     internal static class BridgeProtocol
     {
         internal const int ProtocolVersion = 1;
-        internal const string BridgeVersion = "0.2.0";
+        internal const string BridgeVersion = "0.3.0";
         internal const int MaximumRequestBytes = 262144;
         internal const int CommandTimeoutMilliseconds = 15000;
 
@@ -33,6 +33,16 @@ namespace UnityAI.EditorBridge
             public int instanceId;
             public string hierarchyPath = string.Empty;
             public int maxProperties;
+            public string action = string.Empty;
+            public string actionMap = string.Empty;
+            public string device = string.Empty;
+            public string control = string.Empty;
+            public float[] value = Array.Empty<float>();
+            public int maxBindings;
+            public int maxWidth;
+            public int maxHeight;
+            public string componentType = string.Empty;
+            public string propertyPath = string.Empty;
         }
 
         [Serializable]
@@ -68,6 +78,7 @@ namespace UnityAI.EditorBridge
             public bool isUpdating;
             public string activeScene = string.Empty;
             public string activePlatform = string.Empty;
+            public int frameCount;
             public CompilationResult lastCompilation;
         }
 
@@ -197,6 +208,105 @@ namespace UnityAI.EditorBridge
         {
             public ComponentSnapshot[] components = Array.Empty<ComponentSnapshot>();
             public bool propertiesComplete;
+        }
+
+        [Serializable]
+        internal sealed class OwnedInputDevice
+        {
+            public string device = string.Empty;
+            public string name = string.Empty;
+            public int deviceId;
+        }
+
+        [Serializable]
+        internal sealed class InputCapabilitiesResult
+        {
+            public bool inputSystemAvailable;
+            public bool legacyInputAvailable;
+            public string activeInputHandling = string.Empty;
+            public string[] virtualDevicesSupported = Array.Empty<string>();
+            public OwnedInputDevice[] qaOwnedDevices = Array.Empty<OwnedInputDevice>();
+            public string osFallback = "ORCHESTRATOR_ONLY";
+        }
+
+        [Serializable]
+        internal sealed class InputBindingInfo
+        {
+            public string actionMap = string.Empty;
+            public string action = string.Empty;
+            public bool enabled;
+            public string bindingName = string.Empty;
+            public string path = string.Empty;
+            public string effectivePath = string.Empty;
+            public string groups = string.Empty;
+            public bool isComposite;
+            public bool isPartOfComposite;
+        }
+
+        [Serializable]
+        internal sealed class InputBindingsResult
+        {
+            public bool complete;
+            public int count;
+            public bool hasMore;
+            public InputBindingInfo[] bindings = Array.Empty<InputBindingInfo>();
+        }
+
+        [Serializable]
+        internal sealed class ResolvedInputControl
+        {
+            public string role = string.Empty;
+            public string path = string.Empty;
+        }
+
+        [Serializable]
+        internal sealed class InputActionResolutionResult
+        {
+            public string action = string.Empty;
+            public string actionMap = string.Empty;
+            public string mode = string.Empty;
+            public ResolvedInputControl[] controls = Array.Empty<ResolvedInputControl>();
+        }
+
+        [Serializable]
+        internal sealed class InputCommandResult
+        {
+            public string inputSource = "UNITY_INPUT_SYSTEM_VIRTUAL_DEVICE";
+            public string device = string.Empty;
+            public string control = string.Empty;
+            public float[] value = Array.Empty<float>();
+            public int frameCount;
+        }
+
+        [Serializable]
+        internal sealed class ReleaseInputsResult
+        {
+            public int releasedControls;
+            public int removedDevices;
+            public int frameCount;
+        }
+
+        [Serializable]
+        internal sealed class ScreenshotResult
+        {
+            public string evidenceId = string.Empty;
+            public string relativePath = string.Empty;
+            public string mimeType = "image/png";
+            public int width;
+            public int height;
+            public int byteCount;
+            public string capturedAt = string.Empty;
+        }
+
+        [Serializable]
+        internal sealed class RuntimeProbeResult
+        {
+            public string hierarchyPath = string.Empty;
+            public string componentType = string.Empty;
+            public string propertyPath = string.Empty;
+            public string valueType = string.Empty;
+            public string value = string.Empty;
+            public bool truncated;
         }
 
         internal static Request ParseRequest(string json)

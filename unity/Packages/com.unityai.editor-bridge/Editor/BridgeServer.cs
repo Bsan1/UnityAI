@@ -108,6 +108,7 @@ namespace UnityAI.EditorBridge
             try { listener?.Stop(); } catch (Exception) { }
             console.Dispose();
             compilation.Dispose();
+            commands.Dispose();
             try
             {
                 if (File.Exists(descriptorPath))

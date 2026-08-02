@@ -560,6 +560,24 @@ const handleRequest = async (
     }
   }
 
+  const gameplayQARoute = /^\/tasks\/(TASK-\d{4,})\/gameplay-qa(?:\/([a-z-]+))?$/.exec(path);
+  if (gameplayQARoute !== null && m5?.qa !== undefined) {
+    const id = gameplayQARoute[1];
+    const action = gameplayQARoute[2];
+    if (id !== undefined && action === undefined && request.method === "GET") {
+      sendJson(response, 200, { qa: await m5.qa.get(id) });
+      return;
+    }
+    if (id !== undefined && action === "start" && request.method === "POST") {
+      sendJson(response, 202, { run: await m5.qa.startGameplay(id) });
+      return;
+    }
+    if (id !== undefined && action === "cancel" && request.method === "POST") {
+      sendJson(response, 202, { cancelRequested: m5.qa.cancel(id) });
+      return;
+    }
+  }
+
   const taskRoute = /^\/tasks\/(TASK-\d{4,})(?:\/([a-z-]+))?$/.exec(path);
   if (taskRoute !== null) {
     const id = taskRoute[1];

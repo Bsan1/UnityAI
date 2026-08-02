@@ -809,7 +809,11 @@ export function App() {
             ) : null}
 
             {selectedState === "READY_FOR_GAMEPLAY_QA" ? (
-              <ReadyForGameplayQA details={details} />
+              <ReadyForGameplayQA
+                details={details}
+                busy={busy}
+                onRun={() => void run(() => api.startGameplayQA(details.task.id))}
+              />
             ) : null}
 
             {selectedState === "COMPLETED" ? (
@@ -1044,10 +1048,11 @@ export function QAProgressView({
 }) {
   const session = details.qa.latestSession;
   const automaticFixes = details.qa.fixes.filter((fix) => fix.automatic).length;
+  const gameplayRun = details.progress.events.some((event) => event.type === "GAMEPLAY_QA_STARTED");
   return (
     <section className="panel action-panel">
       <p className="eyebrow">{details.task.state === "FIXING" ? `Automatic fix cycle ${Math.min(automaticFixes + 1, 3)} / 3` : `QA cycle ${session?.cycleNumber ?? 1}`}</p>
-      <h2>{details.task.state === "FIXING" ? "Applying the complete failure batch" : "Running static, structural, and runtime QA"}</h2>
+      <h2>{details.task.state === "FIXING" ? "Applying the complete failure batch" : gameplayRun ? "Running full QA from static through gameplay" : "Running static, structural, and runtime QA"}</h2>
       <p>UnityAI continues every test that can reasonably run and produces one batch report. No chain-of-thought is shown or stored.</p>
       {session === undefined ? null : (
         <>
@@ -1061,10 +1066,10 @@ export function QAProgressView({
             {session.plannedTests.map((test) => {
               const stored = session.results.find((result) => result.testId === test.id)?.status;
               const completed = [...details.progress.events].reverse().find((event) =>
-                event.type === "QA_TEST_COMPLETED" && event.metadata?.testId === test.id
+                (event.type === "QA_TEST_COMPLETED" || event.type === "GAMEPLAY_TEST_COMPLETED") && event.metadata?.testId === test.id
               )?.metadata?.status;
               const started = details.progress.events.some((event) =>
-                event.type === "QA_TEST_STARTED" && event.metadata?.testId === test.id
+                (event.type === "QA_TEST_STARTED" || event.type === "GAMEPLAY_TEST_STARTED") && event.metadata?.testId === test.id
               );
               const status = stored ?? completed ?? (started ? "RUNNING" : "PENDING");
               return (
@@ -1155,14 +1160,22 @@ export function QAResultView({
   );
 }
 
-export function ReadyForGameplayQA({ details }: { readonly details: TaskDetailsResponse }) {
+export function ReadyForGameplayQA({
+  details,
+  busy = false,
+  onRun = () => undefined,
+}: {
+  readonly details: TaskDetailsResponse;
+  readonly busy?: boolean;
+  readonly onRun?: () => void;
+}) {
   const session = details.qa.latestSession;
   return (
     <section className="panel ready-card">
       <p className="eyebrow">Static / Structural / Runtime QA passed</p>
-      <h2>Ready for gameplay QA</h2>
+      <h2>Player-level QA required</h2>
       <p className="important">{session?.summary.gameplayPending ?? 0} required player-level gameplay test(s) remain.</p>
-      <p>M8 player-like QA is required before task completion. This task has not been finalized, merged, or pushed.</p>
+      <p>UnityAI will rerun static, structural, and runtime checks, then drive real Input System bindings with QA-owned virtual devices and collect player-level evidence.</p>
       <div className="qa-test-list">
         {(session?.results ?? []).filter((result) => result.category === "GAMEPLAY").map((result) => (
           <div className="qa-test-row" key={result.testId}>
@@ -1172,6 +1185,14 @@ export function ReadyForGameplayQA({ details }: { readonly details: TaskDetailsR
           </div>
         ))}
       </div>
+      <div className="qa-setting-line">
+        <strong>Automatic Fixes: {details.task.automaticFixesEnabled ? "ON" : "OFF"}</strong>
+        <small>Gameplay defects use the existing full-batch Fix Agent and shared three-cycle task limit.</small>
+      </div>
+      <div className="actions">
+        <button className="primary" disabled={busy} type="button" onClick={onRun}>Run gameplay QA</button>
+      </div>
+      <p className="notice">Completion still requires all QA0-QA3 tests, tooling cleanup, and one final local task commit. No merge or push occurs.</p>
     </section>
   );
 }
@@ -1187,6 +1208,17 @@ export function CompletedTask({ details }: { readonly details: TaskDetailsRespon
         <div><small>Final commit</small><strong>{details.git.environment?.finalCommit}</strong></div>
         <div><small>QA passed</small><strong>{session?.summary.passed ?? 0}</strong></div>
         <div><small>Original project</small><strong>Untouched</strong></div>
+      </div>
+      <div className="result-grid qa-counts">
+        {(["STATIC", "STRUCTURAL", "RUNTIME", "GAMEPLAY"] as const).map((category) => {
+          const categoryResults = session?.results.filter((result) => result.category === category) ?? [];
+          return (
+            <div key={category}>
+              <small>{category}</small>
+              <strong>{categoryResults.length > 0 && categoryResults.every((result) => result.status === "PASS") ? "PASS" : "N/A"}</strong>
+            </div>
+          );
+        })}
       </div>
       <p className="notice">Merged: No · Pushed: No. Internal implementation/fix checkpoints were squashed into one local task commit.</p>
     </section>

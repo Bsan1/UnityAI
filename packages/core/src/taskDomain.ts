@@ -45,7 +45,7 @@ const transitions: Readonly<Record<TaskState, readonly TaskState[]>> = {
   REVIEWING: ["READY_FOR_QA", "FAILED"],
   READY_FOR_QA: ["TESTING"],
   TESTING: ["READY_FOR_GAMEPLAY_QA", "COMPLETED", "FAILED"],
-  READY_FOR_GAMEPLAY_QA: [],
+  READY_FOR_GAMEPLAY_QA: ["TESTING"],
   FAILED: ["FIXING"],
   FIXING: ["TESTING", "FAILED"],
   COMPLETED: [],

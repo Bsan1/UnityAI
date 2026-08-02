@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "qa",
   "displayName": "QA Agent",
-  "role": "Verify an approved Task Contract with evidence using read-only project inspection and Unity MCP",
-  "instructions": "Treat the approved Task Contract and planned tests as authoritative. Work read-only in the supplied managed worktree. Use deterministic preflight evidence first, then the explicit Unity MCP tools for bounded structural and runtime observations. Attempt every supplied STATIC, STRUCTURAL, and RUNTIME test that can reasonably continue after an ordinary failure; do not stop at the first failure. Never modify source, scenes, assets, settings, dependencies, files, or Git state. Never fix defects. Never claim PASS without concrete evidence. Use BLOCKED only when a prerequisite failure makes a test impossible, and explain why. Set blockingReason to NONE for PASS/FAIL and to a concise reason for BLOCKED/NOT_RUN. Do not execute or claim GAMEPLAY tests; UnityAI handles those as pending for M8. Review findings are investigation focus, not automatic failures. Return one concise structured batch only after the available test session is complete, using stable finding IDs such as FAIL-001.",
+  "role": "Verify an approved Task Contract with evidence through static, structural, runtime, and player-like gameplay QA",
+  "instructions": "Treat the approved Task Contract and planned tests as authoritative. Work read-only in the supplied managed worktree. Use deterministic preflight evidence first, then only the explicit safe Unity MCP tools. Attempt every supplied STATIC, STRUCTURAL, RUNTIME, and GAMEPLAY test that can reasonably continue after an ordinary failure; do not stop at the first failure. For GAMEPLAY behavior, drive the real input chain through UnityAI-owned virtual Input System devices and actual bindings; never invoke gameplay methods or InputAction callbacks directly. Inspect bindings before semantic input, use bounded frame waits, release inputs after each scenario, and use screenshots only when visual evidence materially helps. Prefer structured runtime probes for state that can be observed more directly. Never modify source, scenes, assets, settings, dependencies, files, or Git state. Never fix defects. Never claim PASS without concrete evidence. Use BLOCKED only when a required interaction or prerequisite cannot be driven safely, and explain why. Set blockingReason to NONE for PASS/FAIL and to a concise reason for BLOCKED/NOT_RUN. Review findings are investigation focus, not automatic failures. Return one concise structured batch only after the complete supplied test session, using stable finding IDs such as FAIL-001.",
   "permission": "READ_ONLY",
   "toolPolicy": "READ_ONLY_TOOLS",
   "contextPolicy": {
@@ -20,7 +20,7 @@
           "type": "object",
           "properties": {
             "testId": { "type": "string", "minLength": 1 },
-            "category": { "type": "string", "enum": ["STATIC", "STRUCTURAL", "RUNTIME"] },
+            "category": { "type": "string", "enum": ["STATIC", "STRUCTURAL", "RUNTIME", "GAMEPLAY"] },
             "status": { "type": "string", "enum": ["PASS", "FAIL", "BLOCKED", "NOT_RUN"] },
             "summary": { "type": "string", "minLength": 1 },
             "expected": { "type": "string", "minLength": 1 },
@@ -30,7 +30,7 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "kind": { "type": "string", "enum": ["COMPILER", "CONSOLE", "GIT_DIFF", "FILE", "SCENE", "HIERARCHY", "OBJECT", "EDITOR_STATE", "PLAY_MODE", "MCP", "REVIEW"] },
+                  "kind": { "type": "string", "enum": ["COMPILER", "CONSOLE", "GIT_DIFF", "FILE", "SCENE", "HIERARCHY", "OBJECT", "EDITOR_STATE", "PLAY_MODE", "INPUT", "SCREENSHOT", "PROBE", "MCP", "REVIEW"] },
                   "summary": { "type": "string", "minLength": 1 }
                 },
                 "required": ["kind", "summary"],
@@ -64,7 +64,7 @@
               "items": {
                 "type": "object",
                 "properties": {
-                  "kind": { "type": "string", "enum": ["COMPILER", "CONSOLE", "GIT_DIFF", "FILE", "SCENE", "HIERARCHY", "OBJECT", "EDITOR_STATE", "PLAY_MODE", "MCP", "REVIEW"] },
+                  "kind": { "type": "string", "enum": ["COMPILER", "CONSOLE", "GIT_DIFF", "FILE", "SCENE", "HIERARCHY", "OBJECT", "EDITOR_STATE", "PLAY_MODE", "INPUT", "SCREENSHOT", "PROBE", "MCP", "REVIEW"] },
                   "summary": { "type": "string", "minLength": 1 }
                 },
                 "required": ["kind", "summary"],
@@ -72,7 +72,7 @@
               }
             },
             "suspectedArea": { "type": "array", "items": { "type": "string", "minLength": 1 } },
-            "source": { "type": "string", "enum": ["STATIC", "STRUCTURAL", "RUNTIME", "REVIEW"] }
+            "source": { "type": "string", "enum": ["STATIC", "STRUCTURAL", "RUNTIME", "GAMEPLAY", "REVIEW"] }
           },
           "required": ["id", "severity", "title", "description", "relatedAcceptanceCriteria", "relatedTests", "reproduction", "expected", "observed", "evidence", "suspectedArea", "source"],
           "additionalProperties": false

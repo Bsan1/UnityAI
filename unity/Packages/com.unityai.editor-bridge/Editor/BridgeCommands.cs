@@ -9,17 +9,19 @@ using UnityEngine.SceneManagement;
 
 namespace UnityAI.EditorBridge
 {
-    internal sealed class BridgeCommands
+    internal sealed class BridgeCommands : IDisposable
     {
         private readonly string projectRoot;
         private readonly ConsoleReader console;
         private readonly CompilationTracker compilation;
+        private readonly InputQaController input;
 
         internal BridgeCommands(string projectRoot, ConsoleReader console, CompilationTracker compilation)
         {
             this.projectRoot = projectRoot;
             this.console = console;
             this.compilation = compilation;
+            input = new InputQaController();
         }
 
         internal object Execute(BridgeProtocol.Request request)
@@ -51,9 +53,30 @@ namespace UnityAI.EditorBridge
                     return SceneHierarchy(request.@params);
                 case "object.snapshot":
                     return ObjectSnapshot(request.@params);
+                case "play.reloadScene":
+                    return ReloadScene();
+                case "input.capabilities":
+                    return input.Capabilities();
+                case "input.bindings":
+                    return input.Bindings(request.@params);
+                case "input.resolveAction":
+                    return input.ResolveAction(request.@params);
+                case "input.control":
+                    return input.SetControl(request.@params);
+                case "input.releaseAll":
+                    return input.ReleaseAll(true);
+                case "gameView.screenshot":
+                    return VisualEvidence.Capture(projectRoot, request.@params);
+                case "runtime.probe":
+                    return RuntimeProbe(request.@params);
                 default:
                     throw new BridgeCommandException("UNKNOWN_METHOD", "Unknown bridge method: " + request.method);
             }
+        }
+
+        public void Dispose()
+        {
+            input.Dispose();
         }
 
         private BridgeProtocol.PingResult Ping()
@@ -78,8 +101,35 @@ namespace UnityAI.EditorBridge
                 isUpdating = EditorApplication.isUpdating,
                 activeScene = SceneManager.GetActiveScene().name ?? string.Empty,
                 activePlatform = EditorUserBuildSettings.activeBuildTarget.ToString(),
+                frameCount = Time.frameCount,
                 lastCompilation = compilation.Snapshot()
             };
+        }
+
+        private static BridgeProtocol.RequestedResult ReloadScene()
+        {
+            if (!EditorApplication.isPlaying)
+            {
+                throw new BridgeCommandException("INPUT_NOT_ACTIVE", "Scene reload requires Play Mode.");
+            }
+            var scene = SceneManager.GetActiveScene();
+            if (!scene.IsValid() || !scene.isLoaded)
+            {
+                throw new BridgeCommandException("COMMAND_FAILED", "No loaded active scene is available to reload.");
+            }
+            if (scene.buildIndex >= 0)
+            {
+                SceneManager.LoadScene(scene.buildIndex);
+            }
+            else if (!string.IsNullOrEmpty(scene.path))
+            {
+                SceneManager.LoadScene(scene.path);
+            }
+            else
+            {
+                SceneManager.LoadScene(scene.name);
+            }
+            return new BridgeProtocol.RequestedResult { requested = true };
         }
 
         private static BridgeProtocol.SceneSummaryResult SceneSummary()
@@ -240,6 +290,171 @@ namespace UnityAI.EditorBridge
                 components = components.ToArray(),
                 propertiesComplete = complete
             };
+        }
+
+        private static BridgeProtocol.RuntimeProbeResult RuntimeProbe(BridgeProtocol.Parameters parameters)
+        {
+            if (!EditorApplication.isPlaying)
+            {
+                throw new BridgeCommandException("INPUT_NOT_ACTIVE", "Runtime probes require Play Mode.");
+            }
+            GameObject gameObject = null;
+            if (parameters.instanceId != 0)
+            {
+                var unityObject = EditorUtility.InstanceIDToObject(parameters.instanceId);
+                gameObject = unityObject as GameObject;
+                var sourceComponent = unityObject as Component;
+                if (gameObject == null && sourceComponent != null)
+                {
+                    gameObject = sourceComponent.gameObject;
+                }
+            }
+            if (gameObject == null && !string.IsNullOrEmpty(parameters.hierarchyPath))
+            {
+                gameObject = FindByHierarchyPath(parameters.hierarchyPath);
+            }
+            if (gameObject == null || string.IsNullOrWhiteSpace(parameters.componentType) || string.IsNullOrWhiteSpace(parameters.propertyPath))
+            {
+                throw new BridgeCommandException("RUNTIME_PROBE_INVALID", "Runtime probe requires an object, component type, and serialized property path.");
+            }
+
+            var path = BuildHierarchyPath(gameObject);
+            if (string.Equals(parameters.componentType, "Transform", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(parameters.componentType, typeof(Transform).FullName, StringComparison.Ordinal))
+            {
+                return TransformProbe(gameObject.transform, path, parameters.propertyPath);
+            }
+            var component = gameObject.GetComponents<Component>().FirstOrDefault(candidate => candidate != null &&
+                (string.Equals(candidate.GetType().Name, parameters.componentType, StringComparison.Ordinal) ||
+                 string.Equals(candidate.GetType().FullName, parameters.componentType, StringComparison.Ordinal)));
+            if (component == null)
+            {
+                throw new BridgeCommandException("RUNTIME_PROBE_INVALID", "The requested component was not found on the runtime object.");
+            }
+            try
+            {
+                var serialized = new SerializedObject(component);
+                var property = serialized.FindProperty(parameters.propertyPath);
+                if (property == null || property.isArray)
+                {
+                    throw new BridgeCommandException("RUNTIME_PROBE_INVALID", "The requested serialized primitive property was not found or is a collection.");
+                }
+                string value;
+                string valueType;
+                var truncated = false;
+                switch (property.propertyType)
+                {
+                    case SerializedPropertyType.Integer:
+                        value = property.longValue.ToString();
+                        valueType = "Integer";
+                        break;
+                    case SerializedPropertyType.Boolean:
+                        value = property.boolValue ? "true" : "false";
+                        valueType = "Boolean";
+                        break;
+                    case SerializedPropertyType.Float:
+                        value = property.doubleValue.ToString("R");
+                        valueType = "Float";
+                        break;
+                    case SerializedPropertyType.String:
+                        truncated = property.stringValue != null && property.stringValue.Length > 1024;
+                        value = Bound(property.stringValue, 1024);
+                        valueType = "String";
+                        break;
+                    case SerializedPropertyType.Enum:
+                        value = property.enumValueIndex >= 0 && property.enumDisplayNames.Length > property.enumValueIndex
+                            ? property.enumDisplayNames[property.enumValueIndex]
+                            : property.enumValueIndex.ToString();
+                        valueType = "Enum";
+                        break;
+                    case SerializedPropertyType.Vector2:
+                        value = Format(property.vector2Value);
+                        valueType = "Vector2";
+                        break;
+                    case SerializedPropertyType.Vector3:
+                        value = Format(property.vector3Value);
+                        valueType = "Vector3";
+                        break;
+                    case SerializedPropertyType.Quaternion:
+                        value = Format(property.quaternionValue);
+                        valueType = "Quaternion";
+                        break;
+                    case SerializedPropertyType.Color:
+                        value = Format(property.colorValue);
+                        valueType = "Color";
+                        break;
+                    case SerializedPropertyType.ObjectReference:
+                        value = property.objectReferenceValue == null
+                            ? "null"
+                            : property.objectReferenceValue.GetType().FullName + ":" + Bound(property.objectReferenceValue.name, 256);
+                        valueType = "ObjectReference";
+                        break;
+                    default:
+                        throw new BridgeCommandException("RUNTIME_PROBE_INVALID", "The requested property type is not in the bounded runtime probe allowlist.");
+                }
+                return new BridgeProtocol.RuntimeProbeResult
+                {
+                    hierarchyPath = path,
+                    componentType = component.GetType().FullName ?? component.GetType().Name,
+                    propertyPath = property.propertyPath,
+                    valueType = valueType,
+                    value = value,
+                    truncated = truncated
+                };
+            }
+            catch (BridgeCommandException)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                throw new BridgeCommandException("RUNTIME_PROBE_INVALID", "Runtime probe failed: " + exception.Message);
+            }
+        }
+
+        private static BridgeProtocol.RuntimeProbeResult TransformProbe(Transform transform, string path, string propertyPath)
+        {
+            string value;
+            string valueType;
+            switch (propertyPath)
+            {
+                case "position": value = Format(transform.position); valueType = "Vector3"; break;
+                case "localPosition": value = Format(transform.localPosition); valueType = "Vector3"; break;
+                case "rotation": value = Format(transform.rotation); valueType = "Quaternion"; break;
+                case "localRotation": value = Format(transform.localRotation); valueType = "Quaternion"; break;
+                case "localScale": value = Format(transform.localScale); valueType = "Vector3"; break;
+                default:
+                    throw new BridgeCommandException("RUNTIME_PROBE_INVALID", "Transform probe supports position, localPosition, rotation, localRotation, and localScale only.");
+            }
+            return new BridgeProtocol.RuntimeProbeResult
+            {
+                hierarchyPath = path,
+                componentType = typeof(Transform).FullName,
+                propertyPath = propertyPath,
+                valueType = valueType,
+                value = value,
+                truncated = false
+            };
+        }
+
+        private static string Format(Vector2 value)
+        {
+            return "[" + value.x.ToString("R") + "," + value.y.ToString("R") + "]";
+        }
+
+        private static string Format(Vector3 value)
+        {
+            return "[" + value.x.ToString("R") + "," + value.y.ToString("R") + "," + value.z.ToString("R") + "]";
+        }
+
+        private static string Format(Quaternion value)
+        {
+            return "[" + value.x.ToString("R") + "," + value.y.ToString("R") + "," + value.z.ToString("R") + "," + value.w.ToString("R") + "]";
+        }
+
+        private static string Format(Color value)
+        {
+            return "[" + value.r.ToString("R") + "," + value.g.ToString("R") + "," + value.b.ToString("R") + "," + value.a.ToString("R") + "]";
         }
 
         private static List<BridgeProtocol.SerializedPropertySnapshot> ReadPrimitiveProperties(
